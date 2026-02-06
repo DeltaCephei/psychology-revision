@@ -22,6 +22,8 @@
         <a href="#summaries" class="nav-link active">📚 Topic Summaries</a>
         <a href="#flashcards" class="nav-link">🃏 Flashcards</a>
         <a href="#quiz" class="nav-link">✏️ Quiz</a>
+        <a href="#braindump" class="nav-link">🧠 Brain Dump</a>
+        <a href="#progress" class="nav-link">📊 Progress</a>
     </nav>
 
     <main>
@@ -565,7 +567,17 @@
         <!-- Flashcards Section -->
         <section id="flashcards" class="section">
             <h2>Flashcards</h2>
-            <p class="section-intro">Click a card to flip it and reveal the answer. Use the arrows to navigate.</p>
+            <p class="section-intro">Rate your confidence, then flip to check. Use the arrows to navigate.</p>
+
+            <!-- Confidence rating — shown before flipping -->
+            <div class="confidence-buttons" id="confidence-buttons">
+                <span class="confidence-label">How sure are you?</span>
+                <div class="confidence-btns">
+                    <button class="confidence-btn conf-unsure" data-confidence="1">Not sure</button>
+                    <button class="confidence-btn conf-think" data-confidence="2">Think I know</button>
+                    <button class="confidence-btn conf-confident" data-confidence="3">Confident</button>
+                </div>
+            </div>
 
             <div class="flashcard-container">
                 <button class="flashcard-nav prev" aria-label="Previous card">❮</button>
@@ -584,14 +596,34 @@
                 <button class="flashcard-nav next" aria-label="Next card">❯</button>
             </div>
 
+            <!-- SR rating buttons — visible only when card is flipped -->
+            <div class="sr-rating-buttons" id="sr-rating-buttons">
+                <span class="sr-label">How well did you know this?</span>
+                <div class="sr-btns">
+                    <button class="sr-btn sr-hard" data-rating="hard">Hard</button>
+                    <button class="sr-btn sr-good" data-rating="good">Good</button>
+                    <button class="sr-btn sr-easy" data-rating="easy">Easy</button>
+                </div>
+            </div>
+
+            <!-- Elaboration prompt — thinking nudge shown after flip (~35% chance) -->
+            <div class="elaboration-prompt" id="elaboration-prompt" style="display: none;">
+                <p class="elaboration-text" id="elaboration-text"></p>
+            </div>
+
             <div class="flashcard-controls">
                 <span class="card-counter">Card <span id="current-card-num">1</span> of <span id="total-cards">20</span></span>
                 <button class="fc-audio-btn" id="fc-audio-btn" title="Listen to this card">▶</button>
                 <button class="shuffle-btn" id="shuffle-cards">🔀 Shuffle</button>
+                <label class="elaboration-toggle">
+                    <input type="checkbox" id="elaboration-toggle" checked>
+                    <span>Thinking prompts</span>
+                </label>
             </div>
 
             <div class="flashcard-categories">
                 <button class="category-btn active" data-category="all">All</button>
+                <button class="category-btn review-due-btn" data-category="review">📅 Review Due <span class="due-badge" id="due-badge">0</span></button>
                 <button class="category-btn" data-category="biological">🧬 Biological</button>
                 <button class="category-btn" data-category="behaviourist">🔔 Behaviourist</button>
                 <button class="category-btn" data-category="cognitive">💭 Cognitive</button>
@@ -613,6 +645,7 @@
                         <option value="multiple">Multiple Choice</option>
                         <option value="truefalse">True/False</option>
                         <option value="mixed">Mixed</option>
+                        <option value="interleaved">Interleaved Practice</option>
                     </select>
                 </div>
                 <div class="quiz-mode">
@@ -653,7 +686,129 @@
                 </div>
                 <p class="score-message" id="score-message"></p>
                 <div class="results-breakdown" id="results-breakdown"></div>
+                <!-- Per-approach accuracy breakdown for interleaved quizzes -->
+                <div class="approach-breakdown" id="approach-breakdown" style="display: none;">
+                    <h4>Per-Approach Accuracy</h4>
+                    <div class="approach-breakdown-bars" id="approach-breakdown-bars"></div>
+                </div>
                 <button class="retry-quiz-btn" id="retry-quiz">Try Again</button>
+            </div>
+        </section>
+
+        <!-- Brain Dump Section -->
+        <section id="braindump" class="section">
+            <h2>Brain Dump</h2>
+            <p class="section-intro">Pick a topic, write everything you remember, then check against the summary.</p>
+
+            <!-- Setup phase — choose an approach -->
+            <div class="braindump-setup" id="braindump-setup">
+                <div class="braindump-topic-selector">
+                    <label>Choose an approach:</label>
+                    <div class="braindump-topics" id="braindump-topics">
+                        <!-- Buttons generated by JS -->
+                    </div>
+                </div>
+                <button class="start-braindump-btn" id="start-braindump" disabled>Start Brain Dump</button>
+            </div>
+
+            <!-- Writing phase — textarea with timer -->
+            <div class="braindump-writing" id="braindump-writing" style="display: none;">
+                <div class="braindump-header">
+                    <h3 id="braindump-topic-title"></h3>
+                    <div class="braindump-timer">
+                        <span class="timer-icon">⏱️</span>
+                        <span class="timer-display" id="braindump-timer">0:00</span>
+                    </div>
+                </div>
+                <textarea class="braindump-textarea" id="braindump-textarea"
+                    placeholder="Write everything you remember about this approach..."></textarea>
+                <div class="braindump-writing-controls">
+                    <span class="word-count" id="braindump-word-count">0 words</span>
+                    <button class="reveal-btn" id="braindump-reveal">Reveal Summary</button>
+                </div>
+            </div>
+
+            <!-- Comparison phase — side by side -->
+            <div class="braindump-comparison" id="braindump-comparison" style="display: none;">
+                <div class="comparison-layout">
+                    <div class="comparison-panel your-dump">
+                        <h4>Your Brain Dump</h4>
+                        <div class="dump-content" id="braindump-user-content"></div>
+                    </div>
+                    <div class="comparison-panel actual-summary">
+                        <h4>Actual Summary</h4>
+                        <div class="dump-content" id="braindump-actual-content"></div>
+                    </div>
+                </div>
+                <div class="braindump-comparison-controls">
+                    <button class="braindump-again-btn" id="braindump-again">Try Another Topic</button>
+                </div>
+            </div>
+
+            <!-- History of previous attempts -->
+            <div class="braindump-history" id="braindump-history">
+                <h4>Previous Brain Dumps</h4>
+                <div class="braindump-history-list" id="braindump-history-list">
+                    <p class="empty-state">No brain dumps recorded yet.</p>
+                </div>
+            </div>
+        </section>
+
+        <!-- Progress Dashboard Section -->
+        <section id="progress" class="section">
+            <h2>Progress Dashboard</h2>
+            <p class="section-intro">Track your revision progress across flashcards and quizzes.</p>
+
+            <div class="progress-grid">
+                <!-- Study Streak Panel -->
+                <div class="progress-panel" id="panel-streak">
+                    <h3>Study Streak</h3>
+                    <div class="streak-display">
+                        <span class="streak-fire">🔥</span>
+                        <span class="streak-number" id="streak-current">0</span>
+                        <span class="streak-unit">day streak</span>
+                    </div>
+                    <p class="streak-best">Best: <strong id="streak-longest">0</strong> days</p>
+                </div>
+
+                <!-- Flashcard Mastery Panel -->
+                <div class="progress-panel" id="panel-mastery">
+                    <h3>Flashcard Mastery</h3>
+                    <div class="mastery-overview" id="mastery-overview">
+                        <!-- Filled by JS -->
+                    </div>
+                    <div class="mastery-bars" id="mastery-bars">
+                        <!-- Per-approach progress bars filled by JS -->
+                    </div>
+                </div>
+
+                <!-- Quiz History Panel -->
+                <div class="progress-panel" id="panel-quiz-history">
+                    <h3>Quiz History</h3>
+                    <div class="quiz-history-list" id="quiz-history-list">
+                        <p class="empty-state">No quizzes completed yet.</p>
+                    </div>
+                </div>
+
+                <!-- Review Summary Panel -->
+                <div class="progress-panel" id="panel-review-summary">
+                    <h3>Review Summary</h3>
+                    <div class="review-stats" id="review-stats">
+                        <!-- Filled by JS -->
+                    </div>
+                </div>
+
+                <!-- Confidence Calibration Panel -->
+                <div class="progress-panel" id="panel-calibration">
+                    <h3>Confidence Calibration</h3>
+                    <div class="calibration-display" id="calibration-display">
+                        <p class="empty-state">No confidence data yet. Rate your confidence before flipping flashcards to build data here.</p>
+                    </div>
+                </div>
+            </div>
+
+            <div class="progress-footer">
+                <button class="clear-progress-btn" id="clear-progress">Clear All Progress</button>
             </div>
         </section>
     </main>

@@ -717,6 +717,233 @@ let currentQuiz = [];
 let currentQuestionIndex = 0;
 let quizScore = 0;
 let quizAnswers = [];
+let currentFilterCategory = 'all'; // Track active filter for Review Due badge updates
+
+// ============================================
+// SPACED REPETITION — DATA LAYER
+// ============================================
+// localStorage keys
+const LS_FLASHCARD_DATA = 'psych_flashcard_data';
+const LS_QUIZ_HISTORY = 'psych_quiz_history';
+const LS_STUDY_STREAK = 'psych_study_streak';
+const LS_CONFIDENCE_DATA = 'psych_confidence_data';
+
+// Generate stable card ID: "{category}_{origIndex}" — survives shuffle/filter
+function getCardId(card) {
+    return `${card.category}_${card._origIndex}`;
+}
+
+// Load SR data for all cards (keyed by level → cardId)
+function loadFlashcardData() {
+    try {
+        return JSON.parse(localStorage.getItem(LS_FLASHCARD_DATA)) || {};
+    } catch { return {}; }
+}
+
+function saveFlashcardData(data) {
+    localStorage.setItem(LS_FLASHCARD_DATA, JSON.stringify(data));
+}
+
+// Get SR state for one card, creating defaults if it doesn't exist
+function getCardSRState(cardId) {
+    const data = loadFlashcardData();
+    const levelKey = `level${currentLevel}`;
+    if (!data[levelKey]) data[levelKey] = {};
+    return data[levelKey][cardId] || {
+        ease: 2.5,
+        interval: 0,
+        repetitions: 0,
+        dueDate: null,      // ISO date string, null = never seen
+        lastReviewed: null
+    };
+}
+
+// Save SR state for one card
+function setCardSRState(cardId, state) {
+    const data = loadFlashcardData();
+    const levelKey = `level${currentLevel}`;
+    if (!data[levelKey]) data[levelKey] = {};
+    data[levelKey][cardId] = state;
+    saveFlashcardData(data);
+}
+
+// Simplified SM-2 algorithm
+// rating: 'hard' | 'good' | 'easy'
+function calculateSR(state, rating) {
+    const today = new Date().toISOString().slice(0, 10); // YYYY-MM-DD
+    let { ease, interval, repetitions } = state;
+
+    if (rating === 'hard') {
+        // Reset interval, decrease ease
+        interval = 1;
+        ease = Math.max(1.3, ease - 0.2);
+        repetitions = 0;
+    } else if (rating === 'good') {
+        ease = Math.max(1.3, ease - 0.1);
+        if (interval === 0) {
+            interval = 1;
+        } else if (interval === 1) {
+            interval = 3;
+        } else {
+            interval = Math.round(interval * ease);
+        }
+        repetitions++;
+    } else if (rating === 'easy') {
+        ease = Math.min(2.5, ease + 0.1);
+        if (interval === 0) {
+            interval = 3;
+        } else if (interval <= 3) {
+            interval = 7;
+        } else {
+            interval = Math.round(interval * ease * 1.3);
+        }
+        repetitions++;
+    }
+
+    // Calculate next due date
+    const due = new Date();
+    due.setDate(due.getDate() + interval);
+    const dueDate = due.toISOString().slice(0, 10);
+
+    return {
+        ease,
+        interval,
+        repetitions,
+        dueDate,
+        lastReviewed: today
+    };
+}
+
+// Card mastery states: 'new', 'learning', 'mastered'
+function getCardMastery(state) {
+    if (!state.lastReviewed) return 'new';
+    if (state.repetitions >= 3 && state.interval >= 21) return 'mastered';
+    return 'learning';
+}
+
+// Check if a card is due for review (due today or earlier, or never seen)
+function isCardDue(cardId) {
+    const state = getCardSRState(cardId);
+    if (!state.lastReviewed) return true; // Never seen = due
+    if (!state.dueDate) return true;
+    const today = new Date().toISOString().slice(0, 10);
+    return state.dueDate <= today;
+}
+
+// Count due cards for current level
+function countDueCards() {
+    const levelCards = currentLevel === 2 ? flashcards.level2 : flashcards.level3;
+    let count = 0;
+    levelCards.forEach((card, i) => {
+        const cardId = `${card.category}_${i}`;
+        if (isCardDue(cardId)) count++;
+    });
+    return count;
+}
+
+// ============================================
+// QUIZ HISTORY
+// ============================================
+function loadQuizHistory() {
+    try {
+        return JSON.parse(localStorage.getItem(LS_QUIZ_HISTORY)) || [];
+    } catch { return []; }
+}
+
+function saveQuizAttempt(level, type, score, total) {
+    const history = loadQuizHistory();
+    history.push({
+        date: new Date().toISOString(),
+        level,
+        type,
+        score,
+        total,
+        percentage: Math.round((score / total) * 100)
+    });
+    // Keep only the last 50 attempts
+    if (history.length > 50) history.splice(0, history.length - 50);
+    localStorage.setItem(LS_QUIZ_HISTORY, JSON.stringify(history));
+}
+
+// ============================================
+// STUDY STREAK
+// ============================================
+function loadStreak() {
+    try {
+        return JSON.parse(localStorage.getItem(LS_STUDY_STREAK)) || {
+            current: 0,
+            longest: 0,
+            lastStudyDate: null
+        };
+    } catch {
+        return { current: 0, longest: 0, lastStudyDate: null };
+    }
+}
+
+function recordStudyActivity() {
+    const streak = loadStreak();
+    const today = new Date().toISOString().slice(0, 10);
+
+    // Already recorded today
+    if (streak.lastStudyDate === today) return;
+
+    // Check if yesterday was the last study date (continuing streak)
+    const yesterday = new Date();
+    yesterday.setDate(yesterday.getDate() - 1);
+    const yesterdayStr = yesterday.toISOString().slice(0, 10);
+
+    if (streak.lastStudyDate === yesterdayStr) {
+        streak.current++;
+    } else if (streak.lastStudyDate !== today) {
+        // Streak broken — start fresh
+        streak.current = 1;
+    }
+
+    streak.lastStudyDate = today;
+    streak.longest = Math.max(streak.longest, streak.current);
+    localStorage.setItem(LS_STUDY_STREAK, JSON.stringify(streak));
+}
+
+// ============================================
+// CONFIDENCE RATING — DATA LAYER
+// ============================================
+// Tracks the confidence level for the current card (before flip)
+let currentConfidence = null;
+
+// Load all confidence records from localStorage
+function loadConfidenceData() {
+    try {
+        return JSON.parse(localStorage.getItem(LS_CONFIDENCE_DATA)) || {};
+    } catch { return {}; }
+}
+
+// Save confidence data to localStorage
+function saveConfidenceData(data) {
+    localStorage.setItem(LS_CONFIDENCE_DATA, JSON.stringify(data));
+}
+
+// Record a confidence-vs-rating pair after the student rates a card
+// confidence: 1 (not sure), 2 (think I know), 3 (confident)
+// rating: 'hard', 'good', or 'easy'
+function saveConfidenceRecord(cardId, confidence, rating) {
+    const data = loadConfidenceData();
+    const levelKey = `level${currentLevel}`;
+    if (!data[levelKey]) data[levelKey] = {};
+    if (!data[levelKey][cardId]) data[levelKey][cardId] = [];
+
+    data[levelKey][cardId].push({
+        confidence,
+        rating,
+        date: new Date().toISOString().slice(0, 10)
+    });
+
+    // Keep last 10 records per card to avoid unbounded growth
+    if (data[levelKey][cardId].length > 10) {
+        data[levelKey][cardId] = data[levelKey][cardId].slice(-10);
+    }
+
+    saveConfidenceData(data);
+}
 
 // ============================================
 // INITIALIZATION
@@ -729,6 +956,11 @@ document.addEventListener('DOMContentLoaded', () => {
     initializeQuiz();
     initializeAudio();
     initializeFlashcardAudio();
+    initializeRatingButtons();
+    initializeConfidenceButtons();
+    initializeElaborationPrompts();
+    initializeBrainDump();
+    initializeProgressDashboard();
     updateContentForLevel();
 });
 
@@ -760,11 +992,22 @@ function updateContentForLevel() {
     });
 
     // Reset flashcards for new level
+    currentFilterCategory = 'all';
+    // Reset active category button
+    document.querySelectorAll('.category-btn').forEach(b => b.classList.remove('active'));
+    const allBtn = document.querySelector('.category-btn[data-category="all"]');
+    if (allBtn) allBtn.classList.add('active');
     filterFlashcards('all');
     updateFlashcard();
 
+    // Update due badge for new level
+    updateDueBadge();
+
     // Reset quiz
     resetQuiz();
+
+    // Refresh progress dashboard if visible
+    if (currentSection === 'progress') renderProgressDashboard();
 }
 
 // ============================================
@@ -790,6 +1033,18 @@ function showSection(sectionId) {
     });
     document.getElementById(sectionId).classList.add('active');
     currentSection = sectionId;
+
+    // Render progress dashboard when navigating to it
+    if (sectionId === 'progress') renderProgressDashboard();
+    // Update due badge when navigating to flashcards
+    if (sectionId === 'flashcards') updateDueBadge();
+    // Clean up brain dump timer when navigating away
+    if (sectionId !== 'braindump' && braindumpTimerInterval) {
+        clearInterval(braindumpTimerInterval);
+        braindumpTimerInterval = null;
+    }
+    // Refresh brain dump history when navigating to it
+    if (sectionId === 'braindump') renderBraindumpHistory();
 }
 
 // ============================================
@@ -824,10 +1079,18 @@ function initializeFlashcards() {
     const shuffleBtn = document.getElementById('shuffle-cards');
     const categoryBtns = document.querySelectorAll('.category-btn');
 
-    // Flip card on click — stop audio so it doesn't play the wrong side
+    // Clicking the card is now a no-op on the front face (must use confidence
+    // buttons to flip). If already flipped, clicking unflips it.
     flashcard.addEventListener('click', () => {
-        if (typeof stopFlashcardAudio === 'function') stopFlashcardAudio();
-        flashcard.classList.toggle('flipped');
+        if (flashcard.classList.contains('flipped')) {
+            // Allow unflipping by clicking the card
+            if (typeof stopFlashcardAudio === 'function') stopFlashcardAudio();
+            flashcard.classList.remove('flipped');
+            const ratingEl = document.getElementById('sr-rating-buttons');
+            if (ratingEl) ratingEl.classList.remove('visible');
+            updateConfidenceVisibility();
+        }
+        // If not flipped, do nothing — student must pick confidence first
     });
 
     // Navigation
@@ -848,7 +1111,16 @@ function initializeFlashcards() {
         if (e.key === 'ArrowRight') navigateFlashcard(1);
         if (e.key === ' ') {
             e.preventDefault();
-            flashcard.classList.toggle('flipped');
+            if (!flashcard.classList.contains('flipped')) {
+                // Quick-flip with default "Think I know" confidence
+                recordConfidence(2);
+            } else {
+                // Unflip if already showing answer
+                flashcard.classList.remove('flipped');
+                const ratingEl = document.getElementById('sr-rating-buttons');
+                if (ratingEl) ratingEl.classList.remove('visible');
+                updateConfidenceVisibility();
+            }
         }
     });
 
@@ -872,11 +1144,26 @@ function initializeFlashcards() {
 
 function filterFlashcards(category) {
     const levelCards = currentLevel === 2 ? flashcards.level2 : flashcards.level3;
+    currentFilterCategory = category;
 
     // Tag each card with its original array index (for audio file mapping)
     const tagged = levelCards.map((card, i) => ({ ...card, _origIndex: i }));
 
-    if (category === 'all') {
+    if (category === 'review') {
+        // Show due and never-seen cards, with never-seen first
+        const due = [];
+        const neverSeen = [];
+        tagged.forEach(card => {
+            const cardId = getCardId(card);
+            const state = getCardSRState(cardId);
+            if (!state.lastReviewed) {
+                neverSeen.push(card);
+            } else if (isCardDue(cardId)) {
+                due.push(card);
+            }
+        });
+        filteredFlashcards = [...neverSeen, ...due];
+    } else if (category === 'all') {
         filteredFlashcards = tagged;
     } else {
         filteredFlashcards = tagged.filter(card => card.category === category);
@@ -905,11 +1192,24 @@ function navigateFlashcard(direction) {
 }
 
 function updateFlashcard() {
+    // Hide rating buttons whenever card changes (they reappear on flip)
+    const ratingEl = document.getElementById('sr-rating-buttons');
+    if (ratingEl) ratingEl.classList.remove('visible');
+
+    // Hide any visible elaboration prompt
+    hideElaborationPrompt();
+
+    // Reset confidence state and show confidence buttons for the new card
+    updateConfidenceVisibility();
+
     if (filteredFlashcards.length === 0) {
         document.querySelector('.flashcard-question').textContent = 'No flashcards available for this category.';
         document.querySelector('.flashcard-answer').textContent = '';
         document.getElementById('current-card-num').textContent = '0';
         document.getElementById('total-cards').textContent = '0';
+        // Hide confidence buttons when no cards
+        const confEl = document.getElementById('confidence-buttons');
+        if (confEl) confEl.classList.add('hidden');
         return;
     }
 
@@ -951,7 +1251,11 @@ function startQuiz() {
     const levelQuestions = currentLevel === 2 ? quizQuestions.level2 : quizQuestions.level3;
     let availableQuestions = [];
 
-    if (quizType === 'multiple') {
+    if (quizType === 'interleaved') {
+        // Interleaved mode: mix all existing + approach-id questions
+        availableQuestions = buildInterleavedPool();
+        interleavedApproachResults = {}; // Reset per-approach tracking
+    } else if (quizType === 'multiple') {
         availableQuestions = [...levelQuestions.multiple];
     } else if (quizType === 'truefalse') {
         availableQuestions = [...levelQuestions.truefalse];
@@ -959,10 +1263,12 @@ function startQuiz() {
         availableQuestions = [...levelQuestions.multiple, ...levelQuestions.truefalse];
     }
 
-    // Shuffle and select questions
-    for (let i = availableQuestions.length - 1; i > 0; i--) {
-        const j = Math.floor(Math.random() * (i + 1));
-        [availableQuestions[i], availableQuestions[j]] = [availableQuestions[j], availableQuestions[i]];
+    // Shuffle and select questions (interleaved pool is already shuffled)
+    if (quizType !== 'interleaved') {
+        for (let i = availableQuestions.length - 1; i > 0; i--) {
+            const j = Math.floor(Math.random() * (i + 1));
+            [availableQuestions[i], availableQuestions[j]] = [availableQuestions[j], availableQuestions[i]];
+        }
     }
 
     currentQuiz = availableQuestions.slice(0, Math.min(quizLength, availableQuestions.length));
@@ -1060,6 +1366,15 @@ function selectAnswer(answer) {
         feedback.innerHTML = `<strong>Incorrect.</strong> ${question.explanation}`;
     }
 
+    // Track per-approach accuracy for interleaved quizzes
+    if (document.getElementById('quiz-type').value === 'interleaved' && question.approach) {
+        if (!interleavedApproachResults[question.approach]) {
+            interleavedApproachResults[question.approach] = { correct: 0, total: 0 };
+        }
+        interleavedApproachResults[question.approach].total++;
+        if (isCorrect) interleavedApproachResults[question.approach].correct++;
+    }
+
     nextBtn.style.display = 'inline-block';
     nextBtn.textContent = currentQuestionIndex === currentQuiz.length - 1 ? 'See Results' : 'Next Question →';
 }
@@ -1080,6 +1395,11 @@ function showResults() {
 
     document.getElementById('final-score').textContent = quizScore;
     document.getElementById('final-total').textContent = currentQuiz.length;
+
+    // Save quiz attempt to localStorage and update streak
+    const quizType = document.getElementById('quiz-type').value;
+    saveQuizAttempt(currentLevel, quizType, quizScore, currentQuiz.length);
+    recordStudyActivity();
 
     const percentage = (quizScore / currentQuiz.length) * 100;
     let message = '';
@@ -1104,6 +1424,14 @@ function showResults() {
         dot.className = `result-indicator ${correct ? 'correct' : 'incorrect'}`;
         breakdown.appendChild(dot);
     });
+
+    // Show per-approach breakdown for interleaved quizzes
+    if (quizType === 'interleaved') {
+        renderApproachBreakdown();
+    } else {
+        const breakdownEl = document.getElementById('approach-breakdown');
+        if (breakdownEl) breakdownEl.style.display = 'none';
+    }
 }
 
 function resetQuiz() {
@@ -1111,10 +1439,13 @@ function resetQuiz() {
     currentQuestionIndex = 0;
     quizScore = 0;
     quizAnswers = [];
+    interleavedApproachResults = {};
 
     document.querySelector('.quiz-options').style.display = 'flex';
     document.getElementById('quiz-container').style.display = 'none';
     document.getElementById('quiz-results').style.display = 'none';
+    const breakdownEl = document.getElementById('approach-breakdown');
+    if (breakdownEl) breakdownEl.style.display = 'none';
 }
 
 // ============================================
@@ -1251,4 +1582,1066 @@ function stopFlashcardAudio() {
         btn.textContent = '▶';
         btn.classList.remove('playing');
     }
+}
+
+// ============================================
+// SPACED REPETITION — RATING BUTTONS
+// ============================================
+function initializeRatingButtons() {
+    document.querySelectorAll('.sr-btn').forEach(btn => {
+        btn.addEventListener('click', (e) => {
+            e.stopPropagation(); // Don't flip the card
+            const rating = btn.dataset.rating;
+            rateCurrentCard(rating);
+        });
+    });
+}
+
+function rateCurrentCard(rating) {
+    if (filteredFlashcards.length === 0) return;
+
+    const card = filteredFlashcards[currentFlashcardIndex];
+    const cardId = getCardId(card);
+    const currentState = getCardSRState(cardId);
+    const newState = calculateSR(currentState, rating);
+    setCardSRState(cardId, newState);
+
+    // Save confidence-vs-rating pair if a confidence was recorded
+    if (currentConfidence !== null) {
+        saveConfidenceRecord(cardId, currentConfidence, rating);
+        currentConfidence = null;
+    }
+
+    // Record study activity for streak
+    recordStudyActivity();
+
+    // Update due badge
+    updateDueBadge();
+
+    // Auto-advance to next card after a short delay
+    setTimeout(() => {
+        const flashcard = document.getElementById('current-flashcard');
+        flashcard.classList.remove('flipped');
+        document.getElementById('sr-rating-buttons').classList.remove('visible');
+        stopFlashcardAudio();
+
+        // If in review mode and we've gone through all cards, refresh the filter
+        if (currentFilterCategory === 'review') {
+            // Remove the current card from the filtered set if it's no longer due
+            if (!isCardDue(cardId)) {
+                filteredFlashcards.splice(currentFlashcardIndex, 1);
+                if (filteredFlashcards.length === 0) {
+                    updateFlashcard();
+                    updateDueBadge();
+                    return;
+                }
+                // Keep index in bounds
+                if (currentFlashcardIndex >= filteredFlashcards.length) {
+                    currentFlashcardIndex = 0;
+                }
+            } else {
+                // Card is still due (rated hard) — move to next
+                currentFlashcardIndex++;
+                if (currentFlashcardIndex >= filteredFlashcards.length) {
+                    currentFlashcardIndex = 0;
+                }
+            }
+        } else {
+            // Normal mode — just go to next card
+            currentFlashcardIndex++;
+            if (currentFlashcardIndex >= filteredFlashcards.length) {
+                currentFlashcardIndex = 0;
+            }
+        }
+
+        setTimeout(() => updateFlashcard(), 150);
+    }, 200);
+}
+
+// ============================================
+// REVIEW DUE BADGE
+// ============================================
+function updateDueBadge() {
+    const badge = document.getElementById('due-badge');
+    if (badge) {
+        const count = countDueCards();
+        badge.textContent = count;
+    }
+}
+
+// ============================================
+// PROGRESS DASHBOARD
+// ============================================
+function initializeProgressDashboard() {
+    // Clear progress button
+    const clearBtn = document.getElementById('clear-progress');
+    if (clearBtn) {
+        clearBtn.addEventListener('click', () => {
+            if (confirm('Are you sure you want to clear all progress? This cannot be undone.')) {
+                localStorage.removeItem(LS_FLASHCARD_DATA);
+                localStorage.removeItem(LS_QUIZ_HISTORY);
+                localStorage.removeItem(LS_STUDY_STREAK);
+                localStorage.removeItem(LS_CONFIDENCE_DATA);
+                localStorage.removeItem(LS_ELABORATION_ENABLED);
+                localStorage.removeItem(LS_BRAINDUMP_HISTORY);
+                updateDueBadge();
+                renderProgressDashboard();
+            }
+        });
+    }
+}
+
+// Render all panels of the progress dashboard
+function renderProgressDashboard() {
+    renderStreakPanel();
+    renderMasteryPanel();
+    renderQuizHistoryPanel();
+    renderReviewSummaryPanel();
+    renderCalibrationPanel();
+}
+
+function renderStreakPanel() {
+    const streak = loadStreak();
+    document.getElementById('streak-current').textContent = streak.current;
+    document.getElementById('streak-longest').textContent = streak.longest;
+}
+
+function renderMasteryPanel() {
+    const levelCards = currentLevel === 2 ? flashcards.level2 : flashcards.level3;
+    const overviewEl = document.getElementById('mastery-overview');
+    const barsEl = document.getElementById('mastery-bars');
+
+    // Count mastery states across all cards
+    let newCount = 0, learningCount = 0, masteredCount = 0;
+    // Per-approach counts
+    const approaches = {};
+
+    levelCards.forEach((card, i) => {
+        const cardId = `${card.category}_${i}`;
+        const state = getCardSRState(cardId);
+        const mastery = getCardMastery(state);
+
+        if (mastery === 'new') newCount++;
+        else if (mastery === 'learning') learningCount++;
+        else masteredCount++;
+
+        if (!approaches[card.category]) {
+            approaches[card.category] = { total: 0, mastered: 0, learning: 0 };
+        }
+        approaches[card.category].total++;
+        if (mastery === 'mastered') approaches[card.category].mastered++;
+        if (mastery === 'learning') approaches[card.category].learning++;
+    });
+
+    const total = levelCards.length;
+    const masteredPct = total > 0 ? Math.round((masteredCount / total) * 100) : 0;
+
+    overviewEl.innerHTML = `
+        <div class="mastery-summary">
+            <div class="mastery-stat mastered">
+                <span class="stat-value">${masteredPct}%</span>
+                <span class="stat-label">Mastered (${masteredCount})</span>
+            </div>
+            <div class="mastery-stat learning">
+                <span class="stat-value">${learningCount}</span>
+                <span class="stat-label">Learning</span>
+            </div>
+            <div class="mastery-stat new">
+                <span class="stat-value">${newCount}</span>
+                <span class="stat-label">New</span>
+            </div>
+        </div>
+    `;
+
+    // Approach names for display
+    const approachNames = {
+        biological: '🧬 Biological',
+        behaviourist: '🔔 Behaviourist',
+        cognitive: '💭 Cognitive',
+        humanistic: '🌱 Humanistic',
+        psychodynamic: '🛋️ Psychodynamic',
+        sociocultural: '🌍 Sociocultural'
+    };
+
+    let barsHTML = '';
+    for (const [key, data] of Object.entries(approaches)) {
+        const pct = data.total > 0 ? Math.round(((data.mastered + data.learning) / data.total) * 100) : 0;
+        barsHTML += `
+            <div class="mastery-bar-item">
+                <div class="mastery-bar-label">
+                    <span>${approachNames[key] || key}</span>
+                    <span>${pct}%</span>
+                </div>
+                <div class="mastery-bar-track">
+                    <div class="mastery-bar-fill" style="width: ${pct}%"></div>
+                </div>
+            </div>
+        `;
+    }
+    barsEl.innerHTML = barsHTML;
+}
+
+function renderQuizHistoryPanel() {
+    const history = loadQuizHistory();
+    const listEl = document.getElementById('quiz-history-list');
+
+    // Filter to current level
+    const levelHistory = history.filter(h => h.level === currentLevel);
+
+    if (levelHistory.length === 0) {
+        listEl.innerHTML = '<p class="empty-state">No quizzes completed yet.</p>';
+        return;
+    }
+
+    // Show last 5
+    const recent = levelHistory.slice(-5).reverse();
+
+    // Calculate trend (compare last 2 scores)
+    let trend = '';
+    if (levelHistory.length >= 2) {
+        const last = levelHistory[levelHistory.length - 1].percentage;
+        const prev = levelHistory[levelHistory.length - 2].percentage;
+        if (last > prev) trend = '↗';
+        else if (last < prev) trend = '↘';
+        else trend = '→';
+    }
+
+    let html = '';
+    recent.forEach((attempt, i) => {
+        const date = new Date(attempt.date).toLocaleDateString('en-NZ', { day: 'numeric', month: 'short' });
+        const trendDisplay = (i === 0 && trend) ? `<span class="quiz-history-trend">${trend}</span>` : '';
+        html += `
+            <div class="quiz-history-item">
+                <span class="quiz-history-date">${date}</span>
+                <span class="quiz-history-score">${attempt.score}/${attempt.total} (${attempt.percentage}%)</span>
+                ${trendDisplay}
+            </div>
+        `;
+    });
+    listEl.innerHTML = html;
+}
+
+function renderReviewSummaryPanel() {
+    const levelCards = currentLevel === 2 ? flashcards.level2 : flashcards.level3;
+    let dueCount = 0, masteredCount = 0, learningCount = 0, newCount = 0;
+
+    levelCards.forEach((card, i) => {
+        const cardId = `${card.category}_${i}`;
+        const state = getCardSRState(cardId);
+        const mastery = getCardMastery(state);
+
+        if (mastery === 'new') newCount++;
+        else if (mastery === 'mastered') masteredCount++;
+        else learningCount++;
+
+        if (isCardDue(cardId)) dueCount++;
+    });
+
+    const statsEl = document.getElementById('review-stats');
+    statsEl.innerHTML = `
+        <div class="review-stat-item due">
+            <span class="review-stat-value">${dueCount}</span>
+            <span class="review-stat-label">Due Today</span>
+        </div>
+        <div class="review-stat-item mastered">
+            <span class="review-stat-value">${masteredCount}</span>
+            <span class="review-stat-label">Mastered</span>
+        </div>
+        <div class="review-stat-item learning">
+            <span class="review-stat-value">${learningCount}</span>
+            <span class="review-stat-label">Learning</span>
+        </div>
+        <div class="review-stat-item new-cards">
+            <span class="review-stat-value">${newCount}</span>
+            <span class="review-stat-label">New</span>
+        </div>
+    `;
+}
+
+// ============================================
+// CONFIDENCE RATING — UI
+// ============================================
+
+// Set up click handlers on the three confidence buttons
+function initializeConfidenceButtons() {
+    document.querySelectorAll('.confidence-btn').forEach(btn => {
+        btn.addEventListener('click', (e) => {
+            e.stopPropagation();
+            const level = parseInt(btn.dataset.confidence);
+            recordConfidence(level);
+        });
+    });
+}
+
+// Store the confidence pick, then flip the card to reveal the answer
+function recordConfidence(confidenceLevel) {
+    currentConfidence = confidenceLevel;
+
+    // Flip the card
+    const flashcard = document.getElementById('current-flashcard');
+    if (typeof stopFlashcardAudio === 'function') stopFlashcardAudio();
+    flashcard.classList.add('flipped');
+
+    // Show SR rating buttons, hide confidence buttons
+    const ratingEl = document.getElementById('sr-rating-buttons');
+    if (ratingEl) ratingEl.classList.add('visible');
+    const confEl = document.getElementById('confidence-buttons');
+    if (confEl) confEl.classList.add('hidden');
+
+    // Maybe show an elaboration prompt
+    if (filteredFlashcards.length > 0) {
+        maybeShowElaborationPrompt(filteredFlashcards[currentFlashcardIndex]);
+    }
+}
+
+// Show/hide confidence buttons based on card state
+function updateConfidenceVisibility() {
+    const flashcard = document.getElementById('current-flashcard');
+    const confEl = document.getElementById('confidence-buttons');
+    if (!confEl) return;
+
+    // Show confidence buttons when card is NOT flipped and there are cards to show
+    if (flashcard && !flashcard.classList.contains('flipped') && filteredFlashcards.length > 0) {
+        confEl.classList.remove('hidden');
+    } else {
+        confEl.classList.add('hidden');
+    }
+
+    // Reset confidence for the new card
+    currentConfidence = null;
+}
+
+// ============================================
+// CONFIDENCE CALIBRATION — Dashboard Panel
+// ============================================
+
+// Render the calibration panel in the progress dashboard
+function renderCalibrationPanel() {
+    const displayEl = document.getElementById('calibration-display');
+    if (!displayEl) return;
+
+    const data = loadConfidenceData();
+    const levelKey = `level${currentLevel}`;
+    const levelData = data[levelKey] || {};
+
+    // Collect all confidence-rating pairs across all cards
+    const buckets = { 1: { knew: 0, total: 0 }, 2: { knew: 0, total: 0 }, 3: { knew: 0, total: 0 } };
+    const labels = { 1: 'Not sure', 2: 'Think I know', 3: 'Confident' };
+
+    for (const records of Object.values(levelData)) {
+        for (const record of records) {
+            const c = record.confidence;
+            if (buckets[c]) {
+                buckets[c].total++;
+                // "Knew it" = rated good or easy (not hard)
+                if (record.rating === 'good' || record.rating === 'easy') {
+                    buckets[c].knew++;
+                }
+            }
+        }
+    }
+
+    const totalRecords = buckets[1].total + buckets[2].total + buckets[3].total;
+    if (totalRecords === 0) {
+        displayEl.innerHTML = '<p class="empty-state">No confidence data yet. Rate your confidence before flipping flashcards to build data here.</p>';
+        return;
+    }
+
+    // Build calibration bars
+    let html = '';
+    for (const level of [1, 2, 3]) {
+        const b = buckets[level];
+        const pct = b.total > 0 ? Math.round((b.knew / b.total) * 100) : 0;
+        // Colour based on expected calibration:
+        // Level 1 (not sure): low accuracy expected, so anything is fine
+        // Level 3 (confident): should be high accuracy — poor if < 60%
+        let barClass = 'good';
+        if (level === 3 && pct < 60) barClass = 'poor';
+        else if (level === 3 && pct < 80) barClass = 'ok';
+        else if (level === 2 && pct < 40) barClass = 'ok';
+
+        html += `
+            <div class="calibration-row">
+                <span class="calibration-label">${labels[level]}</span>
+                <div class="calibration-bar-wrap">
+                    <div class="calibration-bar-track">
+                        <div class="calibration-bar-fill ${barClass}" style="width: ${pct}%"></div>
+                    </div>
+                    <span class="calibration-pct">${pct}%</span>
+                </div>
+                <span class="calibration-count">(${b.total})</span>
+            </div>
+        `;
+    }
+
+    // Add a calibration insight message
+    const confBucket = buckets[3];
+    if (confBucket.total >= 5 && confBucket.total > 0) {
+        const confPct = Math.round((confBucket.knew / confBucket.total) * 100);
+        if (confPct < 60) {
+            html += `<div class="calibration-message">You said "Confident" on ${confBucket.total} cards but only knew ${confBucket.knew}. Try slowing down and testing yourself more carefully.</div>`;
+        } else if (confPct >= 90) {
+            html += `<div class="calibration-message">Great calibration! When you feel confident, you usually do know the answer.</div>`;
+        }
+    }
+
+    const unsureBucket = buckets[1];
+    if (unsureBucket.total >= 5 && unsureBucket.total > 0) {
+        const unsurePct = Math.round((unsureBucket.knew / unsureBucket.total) * 100);
+        if (unsurePct > 70) {
+            html += `<div class="calibration-message">You often say "Not sure" but actually know the answer (${unsurePct}% correct). Trust yourself more!</div>`;
+        }
+    }
+
+    displayEl.innerHTML = html;
+}
+
+// ============================================
+// ELABORATION PROMPTS — Thinking nudges
+// ============================================
+
+// localStorage key for the toggle preference
+const LS_ELABORATION_ENABLED = 'psych_elaboration_enabled';
+
+// Pool of prompts — general + per-approach + comparison
+const elaborationPrompts = {
+    general: [
+        'Why is this the case?',
+        'Give a real-life example of this.',
+        'Explain this in your own words to a friend.',
+        'How might you use this concept in an internal?',
+        'What would someone who disagrees with this say?',
+        'Can you think of a New Zealand example?'
+    ],
+    biological: [
+        'What brain region or neurotransmitter might be involved?',
+        'How might a twin study test this?',
+        'Is this an example of nature, nurture, or both?'
+    ],
+    behaviourist: [
+        'What conditioning principle is at work here?',
+        'Is this classical or operant conditioning?',
+        'How could this be applied in a classroom?'
+    ],
+    cognitive: [
+        'What schema might be involved?',
+        'Is this a System 1 or System 2 process?',
+        'How could this lead to a cognitive bias?'
+    ],
+    humanistic: [
+        'Where does this fit on Maslow\'s hierarchy?',
+        'Does this relate to free will or determinism?',
+        'How does this connect to self-actualisation?'
+    ],
+    psychodynamic: [
+        'Which part of personality (id/ego/superego) is involved?',
+        'Could a defence mechanism be at play here?',
+        'How might childhood experiences relate to this?'
+    ],
+    sociocultural: [
+        'Would this apply in a collectivist culture?',
+        'How might conformity or social influence play a role?',
+        'Could this finding be limited by WEIRD samples?'
+    ],
+    comparison: [
+        'How would the biological approach explain this differently?',
+        'How would a behaviourist and a humanist disagree about this?',
+        'Which debate is most relevant here: nature/nurture, free will/determinism, or holism/reductionism?'
+    ]
+};
+
+// Track recently shown prompts to avoid repetition
+let recentPrompts = [];
+let elaborationEnabled = true;
+
+// Set up the elaboration toggle checkbox
+function initializeElaborationPrompts() {
+    const toggle = document.getElementById('elaboration-toggle');
+    if (!toggle) return;
+
+    // Load saved preference
+    const saved = localStorage.getItem(LS_ELABORATION_ENABLED);
+    elaborationEnabled = saved === null ? true : saved === 'true';
+    toggle.checked = elaborationEnabled;
+
+    toggle.addEventListener('change', () => {
+        elaborationEnabled = toggle.checked;
+        localStorage.setItem(LS_ELABORATION_ENABLED, elaborationEnabled);
+        if (!elaborationEnabled) hideElaborationPrompt();
+    });
+}
+
+// Maybe show an elaboration prompt when a card is flipped (~35% chance)
+function maybeShowElaborationPrompt(card) {
+    if (!elaborationEnabled) return;
+    if (Math.random() > 0.35) return; // Only show ~35% of the time
+
+    // Build pool from general + card-specific + comparison prompts
+    const pool = [...elaborationPrompts.general];
+    const categoryPrompts = elaborationPrompts[card.category];
+    if (categoryPrompts) pool.push(...categoryPrompts);
+    pool.push(...elaborationPrompts.comparison);
+
+    // Filter out recently shown prompts
+    const available = pool.filter(p => !recentPrompts.includes(p));
+
+    // If all prompts have been shown recently, reset the buffer
+    if (available.length === 0) {
+        recentPrompts = [];
+        return; // Skip this time — fresh pool starts next flip
+    }
+
+    // Pick a random prompt
+    const prompt = available[Math.floor(Math.random() * available.length)];
+    recentPrompts.push(prompt);
+
+    // Keep the recent buffer small (last 8 shown)
+    if (recentPrompts.length > 8) recentPrompts.shift();
+
+    // Display the prompt
+    const promptEl = document.getElementById('elaboration-prompt');
+    const textEl = document.getElementById('elaboration-text');
+    if (promptEl && textEl) {
+        textEl.textContent = prompt;
+        promptEl.style.display = 'block';
+    }
+}
+
+// Hide the elaboration prompt
+function hideElaborationPrompt() {
+    const promptEl = document.getElementById('elaboration-prompt');
+    if (promptEl) promptEl.style.display = 'none';
+}
+
+// ============================================
+// BRAIN DUMP — Write-then-compare mode
+// ============================================
+
+const LS_BRAINDUMP_HISTORY = 'psych_braindump_history';
+
+// Approach display mapping — handles the behaviorist/behaviourist spelling mismatch
+// in HTML data-approach attributes vs app-wide NZ English spelling
+const approachMap = {
+    biological:    { label: '🧬 Biological',    dataAttr: 'biological' },
+    behaviourist:  { label: '🔔 Behaviourist',  dataAttr: 'behaviorist' },
+    cognitive:     { label: '💭 Cognitive',      dataAttr: 'cognitive' },
+    humanistic:    { label: '🌱 Humanistic',     dataAttr: 'humanistic' },
+    psychodynamic: { label: '🛋️ Psychodynamic', dataAttr: 'psychodynamic' },
+    sociocultural: { label: '🌍 Sociocultural',  dataAttr: 'sociocultural' }
+};
+
+// Brain dump state
+let braindumpTimerInterval = null;
+let braindumpStartTime = null;
+let selectedBraindumpApproach = null;
+
+// Set up topic buttons, event handlers, and render history
+function initializeBrainDump() {
+    const topicsEl = document.getElementById('braindump-topics');
+    const startBtn = document.getElementById('start-braindump');
+    const revealBtn = document.getElementById('braindump-reveal');
+    const againBtn = document.getElementById('braindump-again');
+    const textarea = document.getElementById('braindump-textarea');
+
+    if (!topicsEl) return;
+
+    // Generate topic buttons from approach map
+    for (const [key, info] of Object.entries(approachMap)) {
+        const btn = document.createElement('button');
+        btn.className = 'braindump-topic-btn';
+        btn.dataset.approach = key;
+        btn.textContent = info.label;
+        btn.addEventListener('click', () => {
+            // Deselect all, select this one
+            document.querySelectorAll('.braindump-topic-btn').forEach(b => b.classList.remove('selected'));
+            btn.classList.add('selected');
+            selectedBraindumpApproach = key;
+            startBtn.disabled = false;
+        });
+        topicsEl.appendChild(btn);
+    }
+
+    // Start brain dump
+    startBtn.addEventListener('click', startBrainDump);
+
+    // Reveal summary
+    revealBtn.addEventListener('click', revealBraindumpSummary);
+
+    // Try again
+    againBtn.addEventListener('click', resetBrainDump);
+
+    // Word count on textarea input
+    textarea.addEventListener('input', updateBraindumpWordCount);
+
+    // Render any saved history
+    renderBraindumpHistory();
+}
+
+// Begin the writing phase
+function startBrainDump() {
+    if (!selectedBraindumpApproach) return;
+
+    const info = approachMap[selectedBraindumpApproach];
+    document.getElementById('braindump-topic-title').textContent = info.label;
+    document.getElementById('braindump-textarea').value = '';
+    document.getElementById('braindump-word-count').textContent = '0 words';
+    document.getElementById('braindump-timer').textContent = '0:00';
+
+    // Show writing phase, hide setup
+    document.getElementById('braindump-setup').style.display = 'none';
+    document.getElementById('braindump-writing').style.display = 'block';
+    document.getElementById('braindump-comparison').style.display = 'none';
+
+    // Start timer
+    braindumpStartTime = Date.now();
+    braindumpTimerInterval = setInterval(updateBraindumpTimer, 1000);
+
+    // Focus the textarea
+    document.getElementById('braindump-textarea').focus();
+}
+
+// Update the timer display every second
+function updateBraindumpTimer() {
+    const elapsed = Math.floor((Date.now() - braindumpStartTime) / 1000);
+    const mins = Math.floor(elapsed / 60);
+    const secs = elapsed % 60;
+    document.getElementById('braindump-timer').textContent = `${mins}:${String(secs).padStart(2, '0')}`;
+}
+
+// Count words in the textarea
+function updateBraindumpWordCount() {
+    const text = document.getElementById('braindump-textarea').value.trim();
+    const count = text.length === 0 ? 0 : text.split(/\s+/).length;
+    document.getElementById('braindump-word-count').textContent = `${count} word${count !== 1 ? 's' : ''}`;
+}
+
+// Extract summary HTML from the existing approach card in the DOM
+function getApproachSummaryHTML(approachKey) {
+    const info = approachMap[approachKey];
+    if (!info) return '<p>Summary not found.</p>';
+
+    const card = document.querySelector(`.approach-card[data-approach="${info.dataAttr}"]`);
+    if (!card) return '<p>Summary not found.</p>';
+
+    // Get level-specific content (read currentLevel at reveal time, not start time)
+    const content = card.querySelector(`.level-content.level-${currentLevel}`);
+    if (!content) return '<p>No content for this level.</p>';
+
+    return content.innerHTML;
+}
+
+// Show comparison: user text vs actual summary
+function revealBraindumpSummary() {
+    // Stop timer
+    if (braindumpTimerInterval) {
+        clearInterval(braindumpTimerInterval);
+        braindumpTimerInterval = null;
+    }
+
+    const userText = document.getElementById('braindump-textarea').value;
+    const duration = Math.floor((Date.now() - braindumpStartTime) / 1000);
+    const wordCount = userText.trim().length === 0 ? 0 : userText.trim().split(/\s+/).length;
+
+    // Populate comparison panels
+    const userContentEl = document.getElementById('braindump-user-content');
+    userContentEl.textContent = userText;
+    userContentEl.classList.add('user-text');
+
+    document.getElementById('braindump-actual-content').innerHTML = getApproachSummaryHTML(selectedBraindumpApproach);
+
+    // Show comparison, hide writing
+    document.getElementById('braindump-writing').style.display = 'none';
+    document.getElementById('braindump-comparison').style.display = 'block';
+
+    // Save to history
+    saveBraindumpAttempt(selectedBraindumpApproach, wordCount, duration);
+
+    // Record study activity for streak
+    recordStudyActivity();
+
+    // Refresh history display
+    renderBraindumpHistory();
+}
+
+// Reset brain dump to setup phase
+function resetBrainDump() {
+    // Stop timer if running
+    if (braindumpTimerInterval) {
+        clearInterval(braindumpTimerInterval);
+        braindumpTimerInterval = null;
+    }
+
+    // Reset selection
+    selectedBraindumpApproach = null;
+    document.querySelectorAll('.braindump-topic-btn').forEach(b => b.classList.remove('selected'));
+    document.getElementById('start-braindump').disabled = true;
+
+    // Show setup, hide other phases
+    document.getElementById('braindump-setup').style.display = 'block';
+    document.getElementById('braindump-writing').style.display = 'none';
+    document.getElementById('braindump-comparison').style.display = 'none';
+}
+
+// Save a brain dump attempt to localStorage
+function saveBraindumpAttempt(approach, wordCount, duration) {
+    let history = [];
+    try {
+        history = JSON.parse(localStorage.getItem(LS_BRAINDUMP_HISTORY)) || [];
+    } catch { history = []; }
+
+    history.push({
+        date: new Date().toISOString(),
+        level: currentLevel,
+        approach,
+        wordCount,
+        duration
+    });
+
+    // Keep last 20 attempts
+    if (history.length > 20) history.splice(0, history.length - 20);
+    localStorage.setItem(LS_BRAINDUMP_HISTORY, JSON.stringify(history));
+}
+
+// Render brain dump history list
+function renderBraindumpHistory() {
+    const listEl = document.getElementById('braindump-history-list');
+    if (!listEl) return;
+
+    let history = [];
+    try {
+        history = JSON.parse(localStorage.getItem(LS_BRAINDUMP_HISTORY)) || [];
+    } catch { history = []; }
+
+    // Filter to current level and show last 10
+    const levelHistory = history.filter(h => h.level === currentLevel);
+
+    if (levelHistory.length === 0) {
+        listEl.innerHTML = '<p class="empty-state">No brain dumps recorded yet.</p>';
+        return;
+    }
+
+    const recent = levelHistory.slice(-10).reverse();
+    let html = '';
+    for (const attempt of recent) {
+        const date = new Date(attempt.date).toLocaleDateString('en-NZ', { day: 'numeric', month: 'short' });
+        const mins = Math.floor(attempt.duration / 60);
+        const secs = attempt.duration % 60;
+        const timeStr = `${mins}:${String(secs).padStart(2, '0')}`;
+        const label = approachMap[attempt.approach]?.label || attempt.approach;
+
+        html += `
+            <div class="braindump-history-item">
+                <span class="braindump-history-topic">${label}</span>
+                <span class="braindump-history-stats">${attempt.wordCount} words · ${timeStr}</span>
+                <span class="braindump-history-date">${date}</span>
+            </div>
+        `;
+    }
+    listEl.innerHTML = html;
+}
+
+// ============================================
+// INTERLEAVED PRACTICE — Approach-identification questions
+// ============================================
+
+// New question type: "Which approach?" and "Compare approaches" questions
+// These are mixed with existing MC/TF questions in interleaved mode
+const interleavedQuestions = {
+    level2: [
+        // Approach identification — given a scenario, identify the approach
+        {
+            question: 'A psychologist explains a patient\'s aggression by examining their testosterone levels and brain structure. Which approach is this?',
+            options: ['Biological', 'Behaviourist', 'Cognitive', 'Humanistic', 'Psychodynamic', 'Sociocultural'],
+            correct: 0,
+            explanation: 'Examining testosterone and brain structure is characteristic of the biological approach, which focuses on physical causes of behaviour.',
+            approach: 'biological'
+        },
+        {
+            question: 'A therapist treats a client\'s phobia by gradually exposing them to the feared stimulus while teaching relaxation. Which approach is this?',
+            options: ['Biological', 'Behaviourist', 'Cognitive', 'Humanistic', 'Psychodynamic', 'Sociocultural'],
+            correct: 1,
+            explanation: 'Systematic desensitisation is a behaviourist technique based on classical conditioning principles.',
+            approach: 'behaviourist'
+        },
+        {
+            question: 'A researcher argues that a student\'s poor test performance is due to faulty mental schemas about the exam. Which approach is this?',
+            options: ['Biological', 'Behaviourist', 'Cognitive', 'Humanistic', 'Psychodynamic', 'Sociocultural'],
+            correct: 2,
+            explanation: 'Schemas are a cognitive concept — mental frameworks that organise and interpret information.',
+            approach: 'cognitive'
+        },
+        {
+            question: 'A counsellor focuses on helping their client reach their full potential by providing unconditional positive regard. Which approach is this?',
+            options: ['Biological', 'Behaviourist', 'Cognitive', 'Humanistic', 'Psychodynamic', 'Sociocultural'],
+            correct: 3,
+            explanation: 'Unconditional positive regard and self-actualisation are key humanistic concepts from Rogers and Maslow.',
+            approach: 'humanistic'
+        },
+        {
+            question: 'A therapist explores a client\'s recurring dream, suggesting it reveals unconscious desires from childhood. Which approach is this?',
+            options: ['Biological', 'Behaviourist', 'Cognitive', 'Humanistic', 'Psychodynamic', 'Sociocultural'],
+            correct: 4,
+            explanation: 'Dream analysis and unconscious desires are central to Freud\'s psychodynamic approach.',
+            approach: 'psychodynamic'
+        },
+        {
+            question: 'A researcher studies how peer pressure in a group of teenagers affects their risk-taking behaviour. Which approach is this?',
+            options: ['Biological', 'Behaviourist', 'Cognitive', 'Humanistic', 'Psychodynamic', 'Sociocultural'],
+            correct: 5,
+            explanation: 'Peer pressure and group influence on behaviour are key concerns of the sociocultural approach.',
+            approach: 'sociocultural'
+        },
+        {
+            question: 'A doctor prescribes SSRIs to increase serotonin levels in a patient with depression. Which approach is this?',
+            options: ['Biological', 'Behaviourist', 'Cognitive', 'Humanistic', 'Psychodynamic', 'Sociocultural'],
+            correct: 0,
+            explanation: 'Drug treatment targeting neurotransmitters is a biological approach to mental health.',
+            approach: 'biological'
+        },
+        {
+            question: 'A teacher uses a sticker chart to reward students for completing homework. Which approach explains this?',
+            options: ['Biological', 'Behaviourist', 'Cognitive', 'Humanistic', 'Psychodynamic', 'Sociocultural'],
+            correct: 1,
+            explanation: 'A sticker chart is a token economy — a behaviourist technique using operant conditioning (positive reinforcement).',
+            approach: 'behaviourist'
+        },
+        {
+            question: 'A psychologist explains road rage as the result of the availability heuristic and confirmation bias. Which approach is this?',
+            options: ['Biological', 'Behaviourist', 'Cognitive', 'Humanistic', 'Psychodynamic', 'Sociocultural'],
+            correct: 2,
+            explanation: 'Heuristics and cognitive biases are concepts from the cognitive approach.',
+            approach: 'cognitive'
+        },
+        {
+            question: 'A researcher studies how New Zealand\'s collectivist Māori culture shapes attitudes toward mental health differently from individualist Pākehā culture. Which approach?',
+            options: ['Biological', 'Behaviourist', 'Cognitive', 'Humanistic', 'Psychodynamic', 'Sociocultural'],
+            correct: 5,
+            explanation: 'Comparing cultural influences on attitudes is a sociocultural approach to psychology.',
+            approach: 'sociocultural'
+        },
+        {
+            question: 'A psychologist explains a client\'s anger issues as the result of an overactive id overwhelming a weak ego. Which approach is this?',
+            options: ['Biological', 'Behaviourist', 'Cognitive', 'Humanistic', 'Psychodynamic', 'Sociocultural'],
+            correct: 4,
+            explanation: 'The id, ego, and superego are structures of personality in Freud\'s psychodynamic theory.',
+            approach: 'psychodynamic'
+        },
+        {
+            question: 'A therapist helps a client explore the gap between their "ideal self" and "actual self". Which approach is this?',
+            options: ['Biological', 'Behaviourist', 'Cognitive', 'Humanistic', 'Psychodynamic', 'Sociocultural'],
+            correct: 3,
+            explanation: 'The concept of incongruence between ideal and actual self comes from Rogers\' humanistic approach.',
+            approach: 'humanistic'
+        },
+        // Discrimination questions — compare two approaches
+        {
+            question: 'A student is anxious before a speech. A behaviourist would say this is because anxiety was conditioned through past experience. How would a biological psychologist explain it?',
+            options: ['The amygdala is overactive and cortisol levels are elevated', 'The student has an external locus of control', 'The student\'s superego is in conflict with the id', 'The student conforms to group expectations of nervousness'],
+            correct: 0,
+            explanation: 'The biological approach would focus on brain activity (amygdala) and stress hormones (cortisol) as the cause of anxiety.',
+            approach: 'biological'
+        },
+        {
+            question: 'Both the behaviourist and cognitive approaches study learning. What is the key difference?',
+            options: ['Behaviourists use experiments but cognitivists do not', 'Behaviourists focus on observable behaviour while cognitivists focus on internal mental processes', 'There is no real difference between them', 'Behaviourists study humans while cognitivists study animals'],
+            correct: 1,
+            explanation: 'The behaviourist approach only studies observable behaviour, while the cognitive approach investigates internal mental processes like schemas and memory.',
+            approach: 'cognitive'
+        },
+        {
+            question: 'Which two approaches would DISAGREE most about whether we have free will?',
+            options: ['Humanistic and behaviourist', 'Biological and cognitive', 'Sociocultural and psychodynamic', 'Cognitive and humanistic'],
+            correct: 0,
+            explanation: 'Humanists strongly support free will (we choose our behaviour), while behaviourists support environmental determinism (behaviour is controlled by reinforcement).',
+            approach: 'humanistic'
+        },
+        {
+            question: 'A teenager steals from a shop. How would a psychodynamic explanation differ from a sociocultural one?',
+            options: ['Psychodynamic: unconscious impulses from a dominant id. Sociocultural: peer pressure and social norms.', 'Psychodynamic: genetic predisposition. Sociocultural: cognitive bias.', 'Psychodynamic: lack of reinforcement. Sociocultural: conditioned response.', 'They would explain it the same way.'],
+            correct: 0,
+            explanation: 'The psychodynamic approach would look at unconscious drives (id), while the sociocultural approach would examine social influences like peer pressure.',
+            approach: 'psychodynamic'
+        },
+        {
+            question: 'Explaining depression as "low serotonin" is an example of which type of reductionism?',
+            options: ['Machine reductionism', 'Environmental reductionism', 'Biological reductionism', 'Cultural reductionism'],
+            correct: 2,
+            explanation: 'Reducing depression to a single neurotransmitter is biological reductionism — ignoring psychological, social, and environmental factors.',
+            approach: 'biological'
+        },
+        {
+            question: 'Which approach is MOST likely to be criticised for ignoring cultural differences?',
+            options: ['Sociocultural', 'Biological', 'Humanistic', 'Behaviourist'],
+            correct: 1,
+            explanation: 'The biological approach focuses on universal biological mechanisms and is often criticised for ignoring how culture shapes behaviour and health.',
+            approach: 'biological'
+        },
+        {
+            question: 'A researcher claims memories are stored like files on a computer. This is an example of:',
+            options: ['Biological reductionism', 'Environmental reductionism', 'Machine reductionism', 'Psychic determinism'],
+            correct: 2,
+            explanation: 'The computer analogy for the mind is machine reductionism — a criticism of the cognitive approach for oversimplifying mental processes.',
+            approach: 'cognitive'
+        },
+        {
+            question: 'Which debate is MOST relevant when comparing the biological and behaviourist approaches?',
+            options: ['Holism vs reductionism', 'Nature vs nurture', 'The replication crisis', 'Idiographic vs nomothetic'],
+            correct: 1,
+            explanation: 'The biological approach emphasises nature (genes, brain) while the behaviourist approach emphasises nurture (environment, conditioning) — the core of the nature-nurture debate.',
+            approach: 'biological'
+        }
+    ],
+    level3: [
+        {
+            question: 'A researcher uses fMRI to show that London taxi drivers have larger hippocampi due to navigation experience. Which approach and concept does this best demonstrate?',
+            options: ['Biological — neuroplasticity', 'Cognitive — schemas', 'Behaviourist — operant conditioning', 'Sociocultural — cultural learning'],
+            correct: 0,
+            explanation: 'Brain changes from experience demonstrate neuroplasticity — a key biological concept showing the brain adapts to environmental demands.',
+            approach: 'biological'
+        },
+        {
+            question: 'Bandura showed children imitated aggressive behaviour from adult models. This challenges which approach\'s view that learning requires direct reinforcement?',
+            options: ['Cognitive', 'Behaviourist', 'Humanistic', 'Psychodynamic'],
+            correct: 1,
+            explanation: 'Social learning theory challenged traditional behaviourism by showing learning can occur through observation without direct reinforcement.',
+            approach: 'behaviourist'
+        },
+        {
+            question: 'Baddeley\'s working memory model includes a central executive. What does this component do?',
+            options: ['Stores visual information', 'Processes verbal sounds', 'Controls attention and coordinates other components', 'Transfers information to long-term memory'],
+            correct: 2,
+            explanation: 'The central executive is the supervisory system that directs attention and coordinates the phonological loop and visuospatial sketchpad.',
+            approach: 'cognitive'
+        },
+        {
+            question: 'Rogers argued that conditions of worth lead to incongruence. This means:',
+            options: ['The id and superego are in conflict', 'There is a gap between actual self and ideal self due to conditional acceptance', 'Reinforcement schedules are inconsistent', 'Brain chemistry is imbalanced'],
+            correct: 1,
+            explanation: 'Conditions of worth create incongruence — when people feel they must meet conditions to be accepted, causing a gap between who they are and who they want to be.',
+            approach: 'humanistic'
+        },
+        {
+            question: 'Erikson extended Freud\'s theory by proposing development continues across the lifespan. How does this differ from Freud?',
+            options: ['Erikson focused on biological drives while Freud focused on social stages', 'Erikson proposed 8 psychosocial stages while Freud proposed 5 psychosexual stages ending at puberty', 'Erikson rejected the unconscious mind entirely', 'There is no significant difference'],
+            correct: 1,
+            explanation: 'Erikson expanded psychodynamic theory beyond childhood, proposing 8 stages across the whole lifespan with a focus on social rather than sexual development.',
+            approach: 'psychodynamic'
+        },
+        {
+            question: 'Vygotsky\'s Zone of Proximal Development emphasises learning through social interaction. This aligns most closely with which approach?',
+            options: ['Biological', 'Cognitive', 'Behaviourist', 'Sociocultural'],
+            correct: 3,
+            explanation: 'Vygotsky\'s theory is sociocultural — it argues cognitive development occurs through social interaction and cultural tools.',
+            approach: 'sociocultural'
+        },
+        {
+            question: 'A researcher finds that eyewitness testimony is unreliable because leading questions distort memory. Which approach\'s concepts explain this?',
+            options: ['Psychodynamic — repression', 'Cognitive — reconstructive memory and schemas', 'Behaviourist — extinction', 'Biological — hippocampal damage'],
+            correct: 1,
+            explanation: 'Loftus\'s research on the misinformation effect demonstrates cognitive concepts: memory is reconstructive and influenced by schemas and post-event information.',
+            approach: 'cognitive'
+        },
+        {
+            question: 'Self-efficacy (Bandura) and self-actualisation (Maslow) both relate to personal potential. How do the approaches differ?',
+            options: ['Self-efficacy is about belief in ability (behaviourist/social learning); self-actualisation is about reaching full potential (humanistic)', 'They are the same concept from different eras', 'Self-efficacy is biological; self-actualisation is cognitive', 'Self-efficacy is about groups; self-actualisation is about individuals'],
+            correct: 0,
+            explanation: 'Self-efficacy (behaviourist/social learning) focuses on specific beliefs about capability, while self-actualisation (humanistic) is the broader drive to fulfil one\'s potential.',
+            approach: 'humanistic'
+        },
+        {
+            question: 'An emic approach to studying depression in Japan would involve:',
+            options: ['Applying Western diagnostic criteria directly', 'Using standardised tests developed in the USA', 'Studying how depression is understood within Japanese culture itself', 'Comparing Japanese rates with American rates'],
+            correct: 2,
+            explanation: 'An emic approach studies behaviour from within the culture, understanding how Japanese society conceptualises and experiences depression on its own terms.',
+            approach: 'sociocultural'
+        },
+        {
+            question: 'Bowlby\'s attachment theory combines elements of which two broad influences on behaviour?',
+            options: ['Nature (innate attachment system) and nurture (quality of caregiving)', 'Conscious and unconscious processes', 'Individual and group behaviour', 'Classical and operant conditioning'],
+            correct: 0,
+            explanation: 'Bowlby argued attachment is innate (nature/evolution) but its quality depends on the caregiver\'s responsiveness (nurture) — a clear example of interactionism.',
+            approach: 'psychodynamic'
+        },
+        {
+            question: 'Milgram\'s obedience study showed 65% of participants obeyed authority to deliver maximum shocks. This best supports which concept?',
+            options: ['Self-actualisation', 'Biological determinism', 'Situational determinism', 'Cognitive bias'],
+            correct: 2,
+            explanation: 'Milgram demonstrated situational determinism — the power of social situations (authority, setting) to override individual conscience and personality.',
+            approach: 'sociocultural'
+        },
+        {
+            question: 'Transference in psychodynamic therapy occurs when a client projects feelings about parents onto the therapist. This reveals:',
+            options: ['Conditioned emotional responses', 'Unconscious relationship patterns from childhood', 'Cognitive distortions', 'Cultural norms about authority'],
+            correct: 1,
+            explanation: 'Transference reveals unconscious patterns in relationships that originated in childhood experiences with caregivers — a key psychodynamic concept.',
+            approach: 'psychodynamic'
+        }
+    ]
+};
+
+// Track per-approach accuracy during an interleaved quiz
+let interleavedApproachResults = {};
+
+// Build the interleaved question pool: existing MC/TF + new approach-id questions
+function buildInterleavedPool() {
+    const levelQuestions = currentLevel === 2 ? quizQuestions.level2 : quizQuestions.level3;
+    const levelInterleaved = currentLevel === 2 ? interleavedQuestions.level2 : interleavedQuestions.level3;
+
+    // Combine all question types
+    const pool = [
+        ...levelQuestions.multiple,
+        ...levelQuestions.truefalse,
+        ...levelInterleaved
+    ];
+
+    // Shuffle the combined pool
+    for (let i = pool.length - 1; i > 0; i--) {
+        const j = Math.floor(Math.random() * (i + 1));
+        [pool[i], pool[j]] = [pool[j], pool[i]];
+    }
+
+    return pool;
+}
+
+// Render per-approach accuracy breakdown in quiz results
+function renderApproachBreakdown() {
+    const breakdownEl = document.getElementById('approach-breakdown');
+    const barsEl = document.getElementById('approach-breakdown-bars');
+    if (!breakdownEl || !barsEl) return;
+
+    // Only show if there's data
+    const approaches = Object.entries(interleavedApproachResults);
+    if (approaches.length === 0) {
+        breakdownEl.style.display = 'none';
+        return;
+    }
+
+    breakdownEl.style.display = 'block';
+
+    // Approach display names
+    const names = {
+        biological: '🧬 Biological',
+        behaviourist: '🔔 Behaviourist',
+        cognitive: '💭 Cognitive',
+        humanistic: '🌱 Humanistic',
+        psychodynamic: '🛋️ Psychodynamic',
+        sociocultural: '🌍 Sociocultural'
+    };
+
+    let html = '';
+    for (const [approach, data] of approaches) {
+        const pct = data.total > 0 ? Math.round((data.correct / data.total) * 100) : 0;
+        html += `
+            <div class="mastery-bar-item">
+                <div class="mastery-bar-label">
+                    <span>${names[approach] || approach}</span>
+                    <span>${data.correct}/${data.total} (${pct}%)</span>
+                </div>
+                <div class="mastery-bar-track">
+                    <div class="mastery-bar-fill" style="width: ${pct}%"></div>
+                </div>
+            </div>
+        `;
+    }
+    barsEl.innerHTML = html;
 }
