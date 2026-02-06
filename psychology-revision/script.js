@@ -824,8 +824,9 @@ function initializeFlashcards() {
     const shuffleBtn = document.getElementById('shuffle-cards');
     const categoryBtns = document.querySelectorAll('.category-btn');
 
-    // Flip card on click
+    // Flip card on click — stop audio so it doesn't play the wrong side
     flashcard.addEventListener('click', () => {
+        if (typeof stopFlashcardAudio === 'function') stopFlashcardAudio();
         flashcard.classList.toggle('flipped');
     });
 
@@ -1218,11 +1219,13 @@ function toggleFlashcardAudio() {
     stopCurrentAudio();
     stopFlashcardAudio();
 
-    // Build the file path from the current card's original index
+    // Build the file path: _q.mp3 for front (question), _a.mp3 for back (answer)
     if (filteredFlashcards.length === 0) return;
     const card = filteredFlashcards[currentFlashcardIndex];
     const idx = String(card._origIndex).padStart(2, '0');
-    const src = `audio/fc_l${currentLevel}_${idx}.mp3`;
+    const isFlipped = document.getElementById('current-flashcard').classList.contains('flipped');
+    const side = isFlipped ? 'a' : 'q';
+    const src = `audio/fc_l${currentLevel}_${idx}_${side}.mp3`;
 
     fcAudio = new Audio(src);
     btn.textContent = '⏸︎';
