@@ -852,6 +852,65 @@ footer {
 }
 
 /* ============================================
+   BRAIN DUMP — Explainer box
+   ============================================ */
+.braindump-explainer {
+    background: var(--card-bg);
+    border-radius: var(--radius-xl);
+    padding: 0;
+    box-shadow: var(--shadow-sm);
+    margin-bottom: 1.5rem;
+    border-left: 4px solid var(--primary-color);
+}
+
+.braindump-explainer summary {
+    padding: 1rem 1.5rem;
+    cursor: pointer;
+    font-weight: 600;
+    color: var(--primary-color);
+    font-size: 1rem;
+    list-style: none;
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+}
+
+/* Custom disclosure triangle */
+.braindump-explainer summary::before {
+    content: '▸';
+    transition: transform 0.2s ease;
+}
+
+.braindump-explainer[open] summary::before {
+    transform: rotate(90deg);
+}
+
+/* Remove default marker in browsers that support it */
+.braindump-explainer summary::-webkit-details-marker {
+    display: none;
+}
+
+.braindump-explainer .explainer-content {
+    padding: 0 1.5rem 1.25rem;
+    color: var(--text-secondary);
+    font-size: 0.95rem;
+    line-height: 1.6;
+}
+
+.braindump-explainer .explainer-content p {
+    margin: 0 0 0.75rem;
+}
+
+.braindump-explainer .explainer-content ol {
+    margin: 0.5rem 0 0.75rem 1.25rem;
+    padding: 0;
+}
+
+.braindump-explainer .explainer-content li {
+    margin-bottom: 0.3rem;
+}
+
+/* ============================================
    BRAIN DUMP — Write-then-compare mode
    ============================================ */
 .braindump-setup {
