@@ -961,6 +961,10 @@ document.addEventListener('DOMContentLoaded', () => {
     initializeElaborationPrompts();
     initializeBrainDump();
     initializeProgressDashboard();
+    initializeTrafficLights();
+    initializeConceptMaps();
+    initializeFirebase();
+    initializeClassCode();
     updateContentForLevel();
 });
 
@@ -1005,6 +1009,9 @@ function updateContentForLevel() {
 
     // Reset quiz
     resetQuiz();
+
+    // Update traffic light UI for new level
+    updateTrafficLightUI();
 
     // Refresh progress dashboard if visible
     if (currentSection === 'progress') renderProgressDashboard();
@@ -1251,10 +1258,21 @@ function startQuiz() {
     const levelQuestions = currentLevel === 2 ? quizQuestions.level2 : quizQuestions.level3;
     let availableQuestions = [];
 
+    // Set pre-test mode flag
+    isPretestMode = quizType === 'pretest';
+
     if (quizType === 'interleaved') {
         // Interleaved mode: mix all existing + approach-id questions
         availableQuestions = buildInterleavedPool();
         interleavedApproachResults = {}; // Reset per-approach tracking
+    } else if (quizType === 'compare') {
+        // Compare Approaches: use scenario-based questions
+        const levelCompare = currentLevel === 2 ? compareQuestions.level2 : compareQuestions.level3;
+        availableQuestions = [...levelCompare];
+        interleavedApproachResults = {}; // Track per-approach for compare mode too
+    } else if (quizType === 'pretest') {
+        // Pre-Test: use the same pool as mixed (MC + T/F)
+        availableQuestions = [...levelQuestions.multiple, ...levelQuestions.truefalse];
     } else if (quizType === 'multiple') {
         availableQuestions = [...levelQuestions.multiple];
     } else if (quizType === 'truefalse') {
@@ -1272,6 +1290,17 @@ function startQuiz() {
     }
 
     currentQuiz = availableQuestions.slice(0, Math.min(quizLength, availableQuestions.length));
+
+    // Tag each question with a stable _questionId for Firebase tracking
+    currentQuiz.forEach((q, i) => {
+        if (!q._questionId) {
+            // Determine type prefix based on question structure
+            if (q.scenario) q._questionId = `cmp_${i}`;
+            else if (q.options) q._questionId = `mc_${i}`;
+            else q._questionId = `tf_${i}`;
+        }
+    });
+
     currentQuestionIndex = 0;
     quizScore = 0;
     quizAnswers = [];
@@ -1281,7 +1310,12 @@ function startQuiz() {
     document.getElementById('quiz-results').style.display = 'none';
     document.getElementById('quiz-total').textContent = currentQuiz.length;
 
-    displayQuestion();
+    // Show pre-test intro message if applicable
+    if (isPretestMode) {
+        showPretestIntro();
+    } else {
+        displayQuestion();
+    }
 }
 
 function displayQuestion() {
@@ -1355,8 +1389,12 @@ function selectAnswer(answer) {
         });
     }
 
-    // Record answer
-    quizAnswers.push(isCorrect);
+    // Record answer (enriched object for Firebase integration)
+    quizAnswers.push({
+        correct: isCorrect,
+        questionId: question._questionId || null,
+        approach: question.approach || null
+    });
     if (isCorrect) {
         quizScore++;
         feedback.className = 'quiz-feedback correct';
@@ -1366,8 +1404,9 @@ function selectAnswer(answer) {
         feedback.innerHTML = `<strong>Incorrect.</strong> ${question.explanation}`;
     }
 
-    // Track per-approach accuracy for interleaved quizzes
-    if (document.getElementById('quiz-type').value === 'interleaved' && question.approach) {
+    // Track per-approach accuracy for interleaved and compare quizzes
+    const qt = document.getElementById('quiz-type').value;
+    if ((qt === 'interleaved' || qt === 'compare') && question.approach) {
         if (!interleavedApproachResults[question.approach]) {
             interleavedApproachResults[question.approach] = { correct: 0, total: 0 };
         }
@@ -1380,6 +1419,18 @@ function selectAnswer(answer) {
 }
 
 function nextQuestion() {
+    // If the pretest intro is showing, dismiss it and start the real quiz
+    if (pretestIntroShowing) {
+        pretestIntroShowing = false;
+        const feedback = document.getElementById('quiz-feedback');
+        const nextBtn = document.getElementById('next-question');
+        feedback.innerHTML = '';
+        feedback.className = 'quiz-feedback';
+        nextBtn.style.display = 'none';
+        displayQuestion();
+        return;
+    }
+
     currentQuestionIndex++;
 
     if (currentQuestionIndex >= currentQuiz.length) {
@@ -1401,6 +1452,9 @@ function showResults() {
     saveQuizAttempt(currentLevel, quizType, quizScore, currentQuiz.length);
     recordStudyActivity();
 
+    // Send quiz stats to Firebase (class comparison feature)
+    sendQuizStatsToFirebase(currentLevel, quizAnswers);
+
     const percentage = (quizScore / currentQuiz.length) * 100;
     let message = '';
     if (percentage === 100) {
@@ -1416,22 +1470,56 @@ function showResults() {
     }
     document.getElementById('score-message').textContent = message;
 
-    // Show breakdown
+    // Show breakdown (quizAnswers are now {correct, questionId, approach} objects)
     const breakdown = document.getElementById('results-breakdown');
     breakdown.innerHTML = '';
-    quizAnswers.forEach(correct => {
+    quizAnswers.forEach(a => {
         const dot = document.createElement('div');
-        dot.className = `result-indicator ${correct ? 'correct' : 'incorrect'}`;
+        dot.className = `result-indicator ${a.correct ? 'correct' : 'incorrect'}`;
         breakdown.appendChild(dot);
     });
 
-    // Show per-approach breakdown for interleaved quizzes
-    if (quizType === 'interleaved') {
+    // Show per-approach breakdown for interleaved and compare quizzes
+    if (quizType === 'interleaved' || quizType === 'compare') {
         renderApproachBreakdown();
     } else {
         const breakdownEl = document.getElementById('approach-breakdown');
         if (breakdownEl) breakdownEl.style.display = 'none';
     }
+
+    // Pre-test: show "Now go study!" button and a different message
+    if (quizType === 'pretest') {
+        message = percentage >= 60
+            ? 'Good baseline! Now study the topics and retake a regular quiz to see your improvement.'
+            : 'Don\'t worry about the score — getting questions wrong now helps you learn better when you study!';
+        document.getElementById('score-message').textContent = message;
+
+        // Add "Now go study!" button if not already present
+        let studyBtn = document.getElementById('go-study-btn');
+        if (!studyBtn) {
+            studyBtn = document.createElement('button');
+            studyBtn.id = 'go-study-btn';
+            studyBtn.className = 'start-quiz-btn';
+            studyBtn.textContent = 'Now Go Study!';
+            studyBtn.style.marginRight = '1rem';
+            studyBtn.addEventListener('click', () => {
+                resetQuiz();
+                // Navigate to Topic Summaries
+                document.querySelectorAll('.nav-link').forEach(l => l.classList.remove('active'));
+                document.querySelector('.nav-link[href="#summaries"]').classList.add('active');
+                showSection('summaries');
+            });
+            const retryBtn = document.getElementById('retry-quiz');
+            retryBtn.parentNode.insertBefore(studyBtn, retryBtn);
+        }
+        studyBtn.style.display = 'inline-block';
+    } else {
+        // Hide the "Go study" button for non-pretest modes
+        const studyBtn = document.getElementById('go-study-btn');
+        if (studyBtn) studyBtn.style.display = 'none';
+    }
+
+    isPretestMode = false;
 }
 
 function resetQuiz() {
@@ -1440,6 +1528,8 @@ function resetQuiz() {
     quizScore = 0;
     quizAnswers = [];
     interleavedApproachResults = {};
+    pretestIntroShowing = false;
+    isPretestMode = false;
 
     document.querySelector('.quiz-options').style.display = 'flex';
     document.getElementById('quiz-container').style.display = 'none';
@@ -1459,7 +1549,8 @@ const audioFileMap = {
     cognitive: 'cognitive',
     humanistic: 'humanistic',
     psychodynamic: 'psychodynamic',
-    sociocultural: 'sociocultural'
+    sociocultural: 'sociocultural',
+    summaries_intro: 'summaries_intro'
 };
 
 // Currently playing audio element and its button
@@ -1684,7 +1775,11 @@ function initializeProgressDashboard() {
                 localStorage.removeItem(LS_CONFIDENCE_DATA);
                 localStorage.removeItem(LS_ELABORATION_ENABLED);
                 localStorage.removeItem(LS_BRAINDUMP_HISTORY);
+                localStorage.removeItem(LS_TRAFFIC_LIGHT);
+                localStorage.removeItem(LS_CLASS_CODE);
                 updateDueBadge();
+                updateTrafficLightUI();
+                updateClassCodeDisplay();
                 renderProgressDashboard();
             }
         });
@@ -1698,6 +1793,10 @@ function renderProgressDashboard() {
     renderQuizHistoryPanel();
     renderReviewSummaryPanel();
     renderCalibrationPanel();
+    renderSelfAssessmentPanel();
+    renderPretestPanel();
+    renderForgettingCurvePanel();
+    renderClassComparisonPanel();
 }
 
 function renderStreakPanel() {
@@ -2644,4 +2743,1448 @@ function renderApproachBreakdown() {
         `;
     }
     barsEl.innerHTML = html;
+}
+
+// ============================================
+// TRAFFIC LIGHT SELF-ASSESSMENT
+// ============================================
+
+const LS_TRAFFIC_LIGHT = 'psych_traffic_light';
+
+// Load traffic light data from localStorage
+function loadTrafficLights() {
+    try {
+        return JSON.parse(localStorage.getItem(LS_TRAFFIC_LIGHT)) || {};
+    } catch { return {}; }
+}
+
+// Save traffic light data to localStorage
+function saveTrafficLights(data) {
+    localStorage.setItem(LS_TRAFFIC_LIGHT, JSON.stringify(data));
+}
+
+// Get the traffic light colour for an approach at the current level
+function getTrafficLight(approach) {
+    const data = loadTrafficLights();
+    const levelKey = `level${currentLevel}`;
+    return (data[levelKey] && data[levelKey][approach]) || null;
+}
+
+// Set the traffic light colour for an approach at the current level
+function setTrafficLight(approach, colour) {
+    const data = loadTrafficLights();
+    const levelKey = `level${currentLevel}`;
+    if (!data[levelKey]) data[levelKey] = {};
+
+    // Toggle off if clicking the same colour again
+    if (data[levelKey][approach] === colour) {
+        delete data[levelKey][approach];
+    } else {
+        data[levelKey][approach] = colour;
+    }
+
+    saveTrafficLights(data);
+}
+
+// Initialise traffic light buttons on approach cards
+function initializeTrafficLights() {
+    document.querySelectorAll('.traffic-lights').forEach(container => {
+        const approach = container.dataset.approach;
+
+        container.querySelectorAll('.tl-btn').forEach(btn => {
+            btn.addEventListener('click', (e) => {
+                e.stopPropagation(); // Don't toggle the card open/closed
+                const colour = btn.dataset.colour;
+                setTrafficLight(approach, colour);
+                updateTrafficLightUI();
+            });
+        });
+    });
+
+    // Set initial state
+    updateTrafficLightUI();
+}
+
+// Update all traffic light button states to reflect saved data
+function updateTrafficLightUI() {
+    document.querySelectorAll('.traffic-lights').forEach(container => {
+        const approach = container.dataset.approach;
+        const colour = getTrafficLight(approach);
+
+        container.querySelectorAll('.tl-btn').forEach(btn => {
+            const btnColour = btn.dataset.colour;
+            btn.classList.toggle('active', btnColour === colour);
+        });
+    });
+
+    // Apply red-highlight to approach cards rated red (study priority)
+    document.querySelectorAll('.approach-card').forEach(card => {
+        // Map data-approach to traffic light key (handle behaviorist/behaviourist mismatch)
+        const dataApproach = card.dataset.approach;
+        const tlApproach = dataApproach === 'behaviorist' ? 'behaviourist' : dataApproach;
+        const colour = getTrafficLight(tlApproach);
+        card.classList.toggle('tl-priority', colour === 'red');
+    });
+}
+
+// Render the self-assessment panel in the progress dashboard
+function renderSelfAssessmentPanel() {
+    const displayEl = document.getElementById('self-assessment-display');
+    if (!displayEl) return;
+
+    const data = loadTrafficLights();
+    const levelKey = `level${currentLevel}`;
+    const levelData = data[levelKey] || {};
+
+    // Approach display names
+    const names = {
+        biological: '🧬 Biological',
+        behaviourist: '🔔 Behaviourist',
+        cognitive: '💭 Cognitive',
+        humanistic: '🌱 Humanistic',
+        psychodynamic: '🛋️ Psychodynamic',
+        sociocultural: '🌍 Sociocultural'
+    };
+
+    const allApproaches = ['biological', 'behaviourist', 'cognitive', 'humanistic', 'psychodynamic', 'sociocultural'];
+    const counts = { red: 0, amber: 0, green: 0, unset: 0 };
+
+    let rowsHTML = '';
+    for (const approach of allApproaches) {
+        const colour = levelData[approach] || 'unset';
+        counts[colour]++;
+
+        // Coloured indicator dot
+        const dotClass = colour === 'unset' ? 'tl-dot-unset' : `tl-dot-${colour}`;
+        rowsHTML += `
+            <div class="sa-row">
+                <span class="sa-approach">${names[approach]}</span>
+                <span class="sa-dot ${dotClass}">&#9679;</span>
+            </div>
+        `;
+    }
+
+    // Summary line
+    const rated = 6 - counts.unset;
+    let summaryHTML = '';
+    if (rated === 0) {
+        displayEl.innerHTML = '<p class="empty-state">No self-assessment yet. Use the traffic light buttons on approach cards to rate your confidence.</p>';
+        return;
+    }
+
+    const parts = [];
+    if (counts.red > 0) parts.push(`<span class="sa-count sa-count-red">${counts.red} red</span>`);
+    if (counts.amber > 0) parts.push(`<span class="sa-count sa-count-amber">${counts.amber} amber</span>`);
+    if (counts.green > 0) parts.push(`<span class="sa-count sa-count-green">${counts.green} green</span>`);
+    if (counts.unset > 0) parts.push(`<span class="sa-count sa-count-unset">${counts.unset} unrated</span>`);
+    summaryHTML = `<div class="sa-summary">${parts.join(' · ')}</div>`;
+
+    displayEl.innerHTML = rowsHTML + summaryHTML;
+}
+
+// ============================================
+// CONCEPT MAPS — Data
+// ============================================
+
+const conceptMaps = {
+    level2: {
+        biological: {
+            center: 'Biological Approach',
+            branches: [
+                { label: 'Brain Structure', children: ['Amygdala (emotion)', 'Prefrontal cortex (decisions)'] },
+                { label: 'Neurotransmitters', children: ['Serotonin (mood)', 'Dopamine (reward)', 'Adrenaline (fight-or-flight)'] },
+                { label: 'Genetics', children: ['Twin studies', 'MAOA gene', 'Epigenetics'] },
+                { label: 'Key Debates', children: ['Nature vs nurture', 'Biological reductionism', 'Diathesis-stress model'] }
+            ]
+        },
+        behaviourist: {
+            center: 'Behaviourist Approach',
+            branches: [
+                { label: 'Classical Conditioning', children: ['Pavlov\'s dogs', 'Little Albert', 'Systematic desensitisation'] },
+                { label: 'Operant Conditioning', children: ['Positive reinforcement', 'Negative reinforcement', 'Punishment'] },
+                { label: 'Applications', children: ['Token economies', 'Schedules of reinforcement'] },
+                { label: 'Key Debates', children: ['Tabula rasa (nurture)', 'Environmental determinism', 'Environmental reductionism'] }
+            ]
+        },
+        cognitive: {
+            center: 'Cognitive Approach',
+            branches: [
+                { label: 'Information Processing', children: ['Input → Processing → Output', 'Computer analogy'] },
+                { label: 'Schemas', children: ['Mental frameworks', 'Bias & distortion'] },
+                { label: 'Cognitive Biases', children: ['Confirmation bias', 'Availability heuristic', 'System 1 vs System 2'] },
+                { label: 'Key Debates', children: ['Machine reductionism', 'False memories (Loftus)', 'Replication crisis'] }
+            ]
+        },
+        humanistic: {
+            center: 'Humanistic Approach',
+            branches: [
+                { label: 'Self-Actualisation', children: ['Maslow\'s hierarchy', 'Personal growth'] },
+                { label: 'Free Will', children: ['Personal agency', 'Rejection of determinism'] },
+                { label: 'Self-Concept', children: ['Ideal vs actual self', 'Conditions of worth'] },
+                { label: 'Key Debates', children: ['Holism', 'SDT (Deci & Ryan)', 'Locus of control'] }
+            ]
+        },
+        psychodynamic: {
+            center: 'Psychodynamic Approach',
+            branches: [
+                { label: 'Unconscious Mind', children: ['Dreams', 'Freudian slips', 'Repressed memories'] },
+                { label: 'Personality Structure', children: ['Id (pleasure)', 'Ego (reality)', 'Superego (morality)'] },
+                { label: 'Defence Mechanisms', children: ['Repression', 'Denial', 'Projection', 'Rationalisation'] },
+                { label: 'Key Debates', children: ['Psychic determinism', 'Dual instinct theory', 'Bowlby\'s attachment'] }
+            ]
+        },
+        sociocultural: {
+            center: 'Sociocultural Approach',
+            branches: [
+                { label: 'Social Influence', children: ['Conformity', 'Obedience (Milgram)', 'Stanford Prison Exp.'] },
+                { label: 'Culture', children: ['Individualism vs collectivism', 'Culture of honour'] },
+                { label: 'Research Issues', children: ['WEIRD samples', 'Ethnocentrism'] },
+                { label: 'Key Debates', children: ['Situational determinism', 'SES & health', 'Ainsworth critique'] }
+            ]
+        }
+    },
+    level3: {
+        biological: {
+            center: 'Biological Approach',
+            branches: [
+                { label: 'Neuroplasticity', children: ['New neural connections', 'Recovery from injury'] },
+                { label: 'Localisation', children: ['Broca\'s area (speech)', 'Wernicke\'s area (language)'] },
+                { label: 'Key Studies', children: ['Phineas Gage', 'HM case study', 'Split-brain research'] },
+                { label: 'Epigenetics', children: ['Gene expression', 'Nature-nurture interaction'] }
+            ]
+        },
+        behaviourist: {
+            center: 'Behaviourist Approach',
+            branches: [
+                { label: 'Social Learning', children: ['Bandura', 'Observation & imitation'] },
+                { label: 'Vicarious Reinforcement', children: ['Learning from others\' rewards'] },
+                { label: 'Key Studies', children: ['Bobo Doll study', 'Skinner Box', 'Little Albert'] },
+                { label: 'Self-Efficacy', children: ['Belief in ability', 'Effort & persistence'] }
+            ]
+        },
+        cognitive: {
+            center: 'Cognitive Approach',
+            branches: [
+                { label: 'Memory Models', children: ['Multi-store (Atkinson & Shiffrin)', 'Working memory (Baddeley)'] },
+                { label: 'Reconstructive Memory', children: ['Bartlett', 'Schema distortion'] },
+                { label: 'Key Studies', children: ['Loftus & Palmer', 'War of the Ghosts'] },
+                { label: 'Cognitive Distortions', children: ['Catastrophising', 'Black-and-white thinking'] }
+            ]
+        },
+        humanistic: {
+            center: 'Humanistic Approach',
+            branches: [
+                { label: 'Rogers\' Therapy', children: ['Unconditional positive regard', 'Empathy', 'Congruence'] },
+                { label: 'Self-Concept', children: ['Conditions of worth', 'Ideal vs actual self'] },
+                { label: 'Key Theorists', children: ['Maslow', 'Rogers'] },
+                { label: 'Idiographic Approach', children: ['Unique individual', 'Qualitative methods'] }
+            ]
+        },
+        psychodynamic: {
+            center: 'Psychodynamic Approach',
+            branches: [
+                { label: 'Psychosexual Stages', children: ['Oral', 'Anal', 'Phallic', 'Latency', 'Genital'] },
+                { label: 'Attachment (Bowlby)', children: ['Innate need', 'Caregiver responsiveness'] },
+                { label: 'Key Theorists', children: ['Sigmund Freud', 'Anna Freud', 'Erikson'] },
+                { label: 'Transference', children: ['Projecting onto therapist', 'Unconscious patterns'] }
+            ]
+        },
+        sociocultural: {
+            center: 'Sociocultural Approach',
+            branches: [
+                { label: 'Cultural Dimensions', children: ['Individualism vs collectivism', 'Hofstede'] },
+                { label: 'Vygotsky', children: ['ZPD', 'Scaffolding', 'Social interaction'] },
+                { label: 'Key Studies', children: ['Asch conformity', 'Milgram obedience'] },
+                { label: 'Research Issues', children: ['Emic vs etic', 'Social constructionism'] }
+            ]
+        }
+    }
+};
+
+// Render a concept map into a container element
+function renderConceptMap(approach, container) {
+    const levelKey = `level${currentLevel}`;
+    const mapData = conceptMaps[levelKey] && conceptMaps[levelKey][approach];
+    if (!mapData) {
+        container.innerHTML = '<p class="empty-state">No concept map available for this approach at this level.</p>';
+        return;
+    }
+
+    let html = '<div class="cmap">';
+
+    // Central node
+    html += `<div class="cmap-center">${mapData.center}</div>`;
+
+    // Branches
+    html += '<div class="cmap-branches">';
+    mapData.branches.forEach(branch => {
+        html += '<div class="cmap-branch">';
+        html += `<div class="cmap-node cmap-branch-label">${branch.label}</div>`;
+        html += '<div class="cmap-children">';
+        branch.children.forEach(child => {
+            html += `<div class="cmap-node cmap-child">${child}</div>`;
+        });
+        html += '</div></div>';
+    });
+    html += '</div></div>';
+
+    container.innerHTML = html;
+}
+
+// Initialise concept map toggle buttons (added dynamically to approach cards)
+function initializeConceptMaps() {
+    document.querySelectorAll('.approach-card').forEach(card => {
+        const dataApproach = card.dataset.approach;
+        // Map data-approach to our key (handle behaviorist/behaviourist)
+        const approach = dataApproach === 'behaviorist' ? 'behaviourist' : dataApproach;
+
+        // Create toggle button — insert after the card header
+        const header = card.querySelector('.card-header');
+        const content = card.querySelector('.card-content');
+        if (!header || !content) return;
+
+        // Add concept map container to each level-content block
+        content.querySelectorAll('.level-content').forEach(levelContent => {
+            // Add toggle button and map container at the end of each level section
+            const toggleBtn = document.createElement('button');
+            toggleBtn.className = 'cmap-toggle-btn';
+            toggleBtn.textContent = 'View Concept Map';
+            toggleBtn.addEventListener('click', (e) => {
+                e.stopPropagation();
+                const mapContainer = toggleBtn.nextElementSibling;
+                if (mapContainer.style.display === 'none' || !mapContainer.style.display) {
+                    mapContainer.style.display = 'block';
+                    renderConceptMap(approach, mapContainer);
+                    toggleBtn.textContent = 'Hide Concept Map';
+                } else {
+                    mapContainer.style.display = 'none';
+                    toggleBtn.textContent = 'View Concept Map';
+                }
+            });
+
+            const mapContainer = document.createElement('div');
+            mapContainer.className = 'concept-map-container';
+            mapContainer.style.display = 'none';
+
+            levelContent.appendChild(toggleBtn);
+            levelContent.appendChild(mapContainer);
+        });
+    });
+}
+
+// ============================================
+// PRE-TEST MODE
+// ============================================
+
+let isPretestMode = false;
+
+// Check if the current quiz is a pre-test
+function isPretest() {
+    return document.getElementById('quiz-type').value === 'pretest';
+}
+
+// Render pre-test comparison panel in progress dashboard
+function renderPretestPanel() {
+    const displayEl = document.getElementById('pretest-display');
+    if (!displayEl) return;
+
+    const history = loadQuizHistory();
+    const levelHistory = history.filter(h => h.level === currentLevel);
+
+    // Find the latest pre-test and latest regular quiz
+    const pretests = levelHistory.filter(h => h.type === 'pretest');
+    const regulars = levelHistory.filter(h => h.type !== 'pretest');
+
+    if (pretests.length === 0) {
+        displayEl.innerHTML = '<p class="empty-state">No pre-test data yet. Try a Pre-Test quiz before studying, then take a regular quiz afterwards to see your improvement.</p>';
+        return;
+    }
+
+    const latestPretest = pretests[pretests.length - 1];
+    let html = `
+        <div class="pretest-comparison">
+            <div class="pretest-item">
+                <span class="pretest-label">Pre-Test</span>
+                <span class="pretest-score">${latestPretest.percentage}%</span>
+                <span class="pretest-detail">${latestPretest.score}/${latestPretest.total}</span>
+            </div>
+    `;
+
+    if (regulars.length > 0) {
+        const latestRegular = regulars[regulars.length - 1];
+        const improvement = latestRegular.percentage - latestPretest.percentage;
+        const improvementClass = improvement > 0 ? 'positive' : improvement < 0 ? 'negative' : 'neutral';
+        const improvementSign = improvement > 0 ? '+' : '';
+
+        html += `
+            <div class="pretest-arrow">→</div>
+            <div class="pretest-item">
+                <span class="pretest-label">Latest Quiz</span>
+                <span class="pretest-score">${latestRegular.percentage}%</span>
+                <span class="pretest-detail">${latestRegular.score}/${latestRegular.total}</span>
+            </div>
+            <div class="pretest-improvement ${improvementClass}">
+                ${improvementSign}${improvement}%
+            </div>
+        `;
+    } else {
+        html += '<div class="pretest-nudge">Take a regular quiz to see your improvement!</div>';
+    }
+
+    html += '</div>';
+    displayEl.innerHTML = html;
+}
+
+// ============================================
+// COMPARE APPROACHES QUIZ — Question Data
+// ============================================
+
+const compareQuestions = {
+    level2: [
+        // Scenario: Dog phobia — multiple approach perspectives
+        {
+            question: 'Scenario: A teenager develops a phobia of dogs after being bitten. How would a BEHAVIOURIST explain this?',
+            options: [
+                'Classical conditioning: the bite (UCS) was paired with dogs (CS), creating a conditioned fear response',
+                'An overactive amygdala is releasing too much cortisol when dogs are present',
+                'The teenager\'s unconscious mind has repressed the traumatic memory',
+                'The teenager is conforming to their family\'s attitude toward dogs'
+            ],
+            correct: 0,
+            explanation: 'Behaviourists explain phobias through classical conditioning — the bite (unconditioned stimulus) was paired with dogs (neutral stimulus), which became a conditioned stimulus triggering fear.',
+            approach: 'behaviourist',
+            scenario: 'dog_phobia'
+        },
+        {
+            question: 'Scenario: A teenager develops a phobia of dogs after being bitten. How would a BIOLOGICAL psychologist explain this?',
+            options: [
+                'The teenager learned to fear dogs through observing a parent\'s reaction',
+                'The amygdala triggers a fight-or-flight response, flooding the body with adrenaline and cortisol',
+                'The teenager\'s id is in conflict with the superego about the fear',
+                'Faulty schemas about dogs are distorting the teenager\'s perception of danger'
+            ],
+            correct: 1,
+            explanation: 'The biological approach would focus on the role of the amygdala in triggering the fear response and the release of stress hormones like adrenaline and cortisol.',
+            approach: 'biological',
+            scenario: 'dog_phobia'
+        },
+        {
+            question: 'Scenario: A teenager develops a phobia of dogs after being bitten. How would a PSYCHODYNAMIC psychologist explain this?',
+            options: [
+                'The fear is a conditioned response that can be unlearned through systematic desensitisation',
+                'The trauma has been repressed into the unconscious, but the anxiety surfaces as a phobia — a defence mechanism redirecting the distress',
+                'The teenager\'s low serotonin levels are causing heightened anxiety',
+                'Cultural attitudes toward dogs have shaped the teenager\'s reaction'
+            ],
+            correct: 1,
+            explanation: 'The psychodynamic approach would suggest the traumatic memory was repressed into the unconscious, and the phobia is a defence mechanism redirecting the underlying anxiety.',
+            approach: 'psychodynamic',
+            scenario: 'dog_phobia'
+        },
+        // Scenario: Exam anxiety
+        {
+            question: 'Scenario: A student freezes during exams despite knowing the material. How would a COGNITIVE psychologist explain this?',
+            options: [
+                'Negative schemas and cognitive distortions ("I always fail") interfere with information retrieval',
+                'The student has not been reinforced enough for studying',
+                'High cortisol levels are impairing prefrontal cortex function',
+                'The student is experiencing incongruence between their ideal and actual self'
+            ],
+            correct: 0,
+            explanation: 'The cognitive approach focuses on how negative schemas and distorted thinking patterns (catastrophising, all-or-nothing thinking) block effective memory retrieval.',
+            approach: 'cognitive',
+            scenario: 'exam_anxiety'
+        },
+        {
+            question: 'Scenario: A student freezes during exams despite knowing the material. How would a HUMANISTIC psychologist explain this?',
+            options: [
+                'Past exam failures created a conditioned fear response',
+                'The student\'s amygdala triggers a fight-or-flight response during exams',
+                'Conditions of worth from parents or teachers ("you must get top marks") create anxiety and incongruence',
+                'The student\'s superego is creating guilt about potential failure'
+            ],
+            correct: 2,
+            explanation: 'The humanistic approach would focus on conditions of worth — the student feels acceptance depends on academic achievement, creating anxiety when that is threatened.',
+            approach: 'humanistic',
+            scenario: 'exam_anxiety'
+        },
+        // Scenario: Aggression
+        {
+            question: 'Scenario: A child frequently hits other children at school. How would a BEHAVIOURIST explain this?',
+            options: [
+                'The child has inherited genes for aggression from their parents',
+                'The aggression has been positively reinforced (e.g., getting what they want) or learned by observing aggressive models',
+                'The child\'s id is overpowering their underdeveloped superego',
+                'Cultural norms in the child\'s home environment encourage aggression'
+            ],
+            correct: 1,
+            explanation: 'Behaviourists would explain aggression through operant conditioning (reinforcement of aggressive behaviour) or social learning (observing and imitating aggressive models).',
+            approach: 'behaviourist',
+            scenario: 'aggression'
+        },
+        {
+            question: 'Scenario: A child frequently hits other children at school. How would a SOCIOCULTURAL psychologist explain this?',
+            options: [
+                'Low serotonin levels are causing impulsive behaviour',
+                'The child has not reached self-actualisation on Maslow\'s hierarchy',
+                'Social norms in the child\'s peer group or family normalise aggression; the child is conforming to these expectations',
+                'Faulty schemas about social interaction are causing misinterpretation of others\' intentions'
+            ],
+            correct: 2,
+            explanation: 'The sociocultural approach would examine how social norms, peer groups, and cultural values shape the child\'s behaviour — aggression may be normalised in their social context.',
+            approach: 'sociocultural',
+            scenario: 'aggression'
+        },
+        {
+            question: 'Scenario: A child frequently hits other children at school. How would a BIOLOGICAL psychologist explain this?',
+            options: [
+                'High testosterone and low serotonin levels are creating impulsive, aggressive behaviour',
+                'The child is projecting unconscious anxiety onto other children',
+                'Previous punishment for aggression was not severe enough to deter the behaviour',
+                'The child lacks self-efficacy in social situations'
+            ],
+            correct: 0,
+            explanation: 'The biological approach links aggression to high testosterone levels and low serotonin (which reduces impulse control). The MAOA gene may also play a role.',
+            approach: 'biological',
+            scenario: 'aggression'
+        },
+        // Scenario: Depression
+        {
+            question: 'Scenario: A young person has been diagnosed with depression. How would a COGNITIVE psychologist explain this?',
+            options: [
+                'Low serotonin and noradrenaline levels in the brain',
+                'Negative automatic thoughts, cognitive distortions like catastrophising, and a pessimistic schema about themselves and the future',
+                'Repressed childhood trauma emerging as depressive symptoms',
+                'Social isolation and lack of group belonging'
+            ],
+            correct: 1,
+            explanation: 'The cognitive approach explains depression through negative automatic thoughts, cognitive distortions (e.g., catastrophising, overgeneralisation), and Beck\'s negative cognitive triad.',
+            approach: 'cognitive',
+            scenario: 'depression'
+        },
+        {
+            question: 'Scenario: A young person has been diagnosed with depression. How would a BIOLOGICAL psychologist explain this?',
+            options: [
+                'Learned helplessness from repeated failures',
+                'Conditions of worth have led to incongruence and low self-esteem',
+                'Low levels of serotonin and/or noradrenaline are disrupting mood regulation',
+                'Cultural expectations about success are creating pressure'
+            ],
+            correct: 2,
+            explanation: 'The biological approach explains depression as a chemical imbalance — low serotonin and noradrenaline levels — which is why SSRIs (selective serotonin reuptake inhibitors) are prescribed.',
+            approach: 'biological',
+            scenario: 'depression'
+        },
+        // Scenario: Addiction
+        {
+            question: 'Scenario: A person cannot stop gambling despite financial ruin. How would a BEHAVIOURIST explain this?',
+            options: [
+                'Gambling operates on a variable-ratio reinforcement schedule, producing behaviour highly resistant to extinction',
+                'The person has a genetic predisposition to addiction',
+                'Unconscious desires for self-destruction (Thanatos) drive the behaviour',
+                'Cognitive biases make the person overestimate their chances of winning'
+            ],
+            correct: 0,
+            explanation: 'Behaviourists explain gambling addiction through variable-ratio schedules of reinforcement — the unpredictable reward pattern makes the behaviour extremely resistant to extinction.',
+            approach: 'behaviourist',
+            scenario: 'gambling'
+        },
+        {
+            question: 'Scenario: A person cannot stop gambling despite financial ruin. How would a COGNITIVE psychologist explain this?',
+            options: [
+                'Dopamine release in the brain\'s reward system creates physical dependency',
+                'The person conforms to the gambling culture of their peer group',
+                'The gambler\'s fallacy, illusion of control, and confirmation bias (remembering wins, forgetting losses) maintain the behaviour',
+                'Conditions of worth make the person seek validation through financial success'
+            ],
+            correct: 2,
+            explanation: 'The cognitive approach explains gambling through cognitive biases: the gambler\'s fallacy ("I\'m due a win"), illusion of control, and selective recall of wins over losses.',
+            approach: 'cognitive',
+            scenario: 'gambling'
+        },
+        // Scenario: Relationship difficulties
+        {
+            question: 'Scenario: An adult has difficulty forming close relationships. How would a PSYCHODYNAMIC psychologist explain this?',
+            options: [
+                'Insecure attachment in childhood (Bowlby) created unconscious patterns that repeat in adult relationships',
+                'The person has not been reinforced for social behaviour',
+                'Low oxytocin levels are reducing bonding behaviour',
+                'An external locus of control makes the person feel helpless in relationships'
+            ],
+            correct: 0,
+            explanation: 'The psychodynamic approach links adult relationship difficulties to early attachment experiences (Bowlby). Insecure attachment creates unconscious patterns that repeat across relationships.',
+            approach: 'psychodynamic',
+            scenario: 'relationships'
+        },
+        {
+            question: 'Scenario: An adult has difficulty forming close relationships. How would a HUMANISTIC psychologist explain this?',
+            options: [
+                'Classical conditioning has associated relationships with pain',
+                'The person received conditional love in childhood, creating conditions of worth that make them fear vulnerability and rejection',
+                'The person conforms to a cultural norm of emotional restraint',
+                'An imbalance of serotonin makes social interaction uncomfortable'
+            ],
+            correct: 1,
+            explanation: 'Humanistic psychologists would point to conditions of worth — if love was conditional in childhood, the person learned to hide their true self, creating incongruence and difficulty with intimacy.',
+            approach: 'humanistic',
+            scenario: 'relationships'
+        },
+        // Scenario: Obesity
+        {
+            question: 'Scenario: Obesity rates are rising in New Zealand. How would a SOCIOCULTURAL psychologist explain this?',
+            options: [
+                'Genetic factors predispose certain individuals to weight gain',
+                'Food advertising acts as a conditioned stimulus for eating behaviour',
+                'Social norms around food, fast-food culture, food deserts in low-SES areas, and cultural attitudes toward body image all contribute',
+                'Unconscious oral fixation from the first psychosexual stage drives overeating'
+            ],
+            correct: 2,
+            explanation: 'The sociocultural approach would examine social and cultural factors: food advertising norms, socioeconomic access to healthy food, cultural attitudes toward body size, and peer eating behaviours.',
+            approach: 'sociocultural',
+            scenario: 'obesity'
+        },
+        // Scenario: Conformity in school
+        {
+            question: 'Scenario: A student starts vaping because all their friends do. How would a SOCIOCULTURAL psychologist explain this?',
+            options: [
+                'Nicotine acts on dopamine receptors in the brain',
+                'Normative social influence — the student changes behaviour to fit in with the group and avoid rejection',
+                'The student\'s ego cannot resist the pressure from the id',
+                'Classical conditioning has paired the peer group with pleasure'
+            ],
+            correct: 1,
+            explanation: 'The sociocultural approach would explain this through normative social influence (conformity) — the student vapes to fit in with the group and avoid social rejection.',
+            approach: 'sociocultural',
+            scenario: 'vaping'
+        },
+        {
+            question: 'Scenario: A student starts vaping because all their friends do. How would a BIOLOGICAL psychologist explain continued use?',
+            options: [
+                'The student is conforming to peer pressure',
+                'Conditions of worth make the student seek approval through vaping',
+                'Nicotine triggers dopamine release in the brain\'s reward pathway, creating physical dependence',
+                'Faulty schemas about health risks are leading to poor decisions'
+            ],
+            correct: 2,
+            explanation: 'While the sociocultural approach explains the start of vaping, the biological approach explains continued use: nicotine triggers dopamine release in the reward pathway, creating physical dependence.',
+            approach: 'biological',
+            scenario: 'vaping'
+        },
+        // Cross-cutting questions
+        {
+            question: 'Which pair of approaches would MOST disagree about the cause of criminal behaviour?',
+            options: [
+                'Biological (genes/brain) vs Sociocultural (social environment/poverty)',
+                'Cognitive vs Humanistic',
+                'Psychodynamic vs Behaviourist',
+                'Humanistic vs Cognitive'
+            ],
+            correct: 0,
+            explanation: 'The biological approach would focus on genetic factors (e.g., MAOA gene) and brain abnormalities, while the sociocultural approach would examine poverty, peer groups, and social inequality.',
+            approach: 'biological',
+            scenario: 'cross_cutting'
+        },
+        {
+            question: 'A patient receives both medication (SSRI) and talking therapy (CBT). This is an example of:',
+            options: [
+                'Biological reductionism',
+                'Environmental determinism',
+                'An eclectic approach combining biological and cognitive treatments',
+                'Psychic determinism'
+            ],
+            correct: 2,
+            explanation: 'Combining medication (biological) with CBT (cognitive-behavioural) is an eclectic approach — using methods from multiple approaches to treat the whole person.',
+            approach: 'cognitive',
+            scenario: 'cross_cutting'
+        },
+        {
+            question: 'The diathesis-stress model resolves the nature-nurture debate by suggesting:',
+            options: [
+                'Nature is always more important than nurture',
+                'Nurture is always more important than nature',
+                'A genetic vulnerability (diathesis) must be triggered by environmental stress — both are needed',
+                'Neither nature nor nurture matters; behaviour is entirely random'
+            ],
+            correct: 2,
+            explanation: 'The diathesis-stress model is an interactionist approach — it requires both a biological predisposition (nature) AND an environmental trigger (nurture) for disorders to develop.',
+            approach: 'biological',
+            scenario: 'cross_cutting'
+        }
+    ],
+    level3: [
+        // Scenario: Memory failure
+        {
+            question: 'Scenario: An eyewitness incorrectly identifies a suspect in a police lineup. How would a COGNITIVE psychologist explain this?',
+            options: [
+                'The witness\'s amygdala was activated during the crime, impairing hippocampal encoding',
+                'Reconstructive memory and the misinformation effect — post-event information contaminated the original memory',
+                'The witness is repressing the true memory to protect themselves from anxiety',
+                'Social pressure from police officers caused conformity'
+            ],
+            correct: 1,
+            explanation: 'The cognitive approach would explain this through Bartlett\'s reconstructive memory and Loftus\'s misinformation effect — memories are rebuilt each time and are susceptible to post-event contamination.',
+            approach: 'cognitive',
+            scenario: 'eyewitness'
+        },
+        {
+            question: 'Scenario: An eyewitness incorrectly identifies a suspect in a police lineup. How would a SOCIOCULTURAL psychologist explain this?',
+            options: [
+                'Schemas distorted the memory at encoding',
+                'Social pressure and authority influence from police officers may have biased the witness toward making an identification',
+                'The witness\'s hippocampus failed to consolidate the memory',
+                'Defence mechanisms are blocking accurate recall'
+            ],
+            correct: 1,
+            explanation: 'The sociocultural approach would focus on social influence — the authority of police, social pressure to "help solve the crime," and even the lineup procedure itself can bias identification.',
+            approach: 'sociocultural',
+            scenario: 'eyewitness'
+        },
+        // Scenario: Child development
+        {
+            question: 'Scenario: A child raised in a deprived orphanage shows developmental delays. How would a BIOLOGICAL psychologist explain this?',
+            options: [
+                'Lack of stimulation has reduced neuroplasticity and neural connection formation during critical periods',
+                'The child has not observed successful models to imitate',
+                'The child has developed an external locus of control',
+                'Cultural norms in the orphanage discourage development'
+            ],
+            correct: 0,
+            explanation: 'The biological approach would focus on neuroplasticity — the lack of environmental stimulation during critical developmental periods reduces the formation of neural connections.',
+            approach: 'biological',
+            scenario: 'orphanage'
+        },
+        {
+            question: 'Scenario: A child raised in a deprived orphanage shows developmental delays. How would a PSYCHODYNAMIC psychologist explain this?',
+            options: [
+                'The lack of a consistent caregiver prevented secure attachment (Bowlby), disrupting the child\'s internal working model for relationships',
+                'Variable-ratio reinforcement schedules were absent',
+                'Cognitive distortions about the self developed early',
+                'The child\'s brain lacked sufficient serotonin'
+            ],
+            correct: 0,
+            explanation: 'Bowlby\'s attachment theory (psychodynamic) would explain that the lack of a consistent caregiver prevented secure attachment, disrupting the child\'s internal working model for all future relationships.',
+            approach: 'psychodynamic',
+            scenario: 'orphanage'
+        },
+        // Scenario: Therapy choice
+        {
+            question: 'Scenario: A therapist offers unconditional positive regard and empathic listening to a client with low self-esteem. Which approach is this?',
+            options: [
+                'Cognitive — challenging negative automatic thoughts',
+                'Behaviourist — systematic desensitisation',
+                'Humanistic — Rogers\' person-centred therapy',
+                'Psychodynamic — free association and dream analysis'
+            ],
+            correct: 2,
+            explanation: 'Unconditional positive regard and empathic listening are the hallmarks of Rogers\' person-centred therapy, a humanistic approach focused on creating conditions for personal growth.',
+            approach: 'humanistic',
+            scenario: 'therapy'
+        },
+        {
+            question: 'Scenario: A therapist asks a client to keep a thought diary to identify and challenge negative automatic thoughts. Which approach is this?',
+            options: [
+                'Humanistic — self-actualisation',
+                'Cognitive — CBT (Cognitive Behavioural Therapy)',
+                'Psychodynamic — transference analysis',
+                'Biological — medication management'
+            ],
+            correct: 1,
+            explanation: 'Thought diaries and challenging negative automatic thoughts are core techniques of CBT (Cognitive Behavioural Therapy), rooted in the cognitive approach.',
+            approach: 'cognitive',
+            scenario: 'therapy'
+        },
+        // Scenario: Cultural differences in mental health
+        {
+            question: 'Scenario: Depression is expressed as physical symptoms (headaches, fatigue) in some Asian cultures but as emotional symptoms (sadness, hopelessness) in Western cultures. Which concept explains this?',
+            options: [
+                'Biological reductionism',
+                'Emic differences — culture shapes how mental distress is experienced and expressed',
+                'Operant conditioning of symptom expression',
+                'Psychosexual fixation'
+            ],
+            correct: 1,
+            explanation: 'This is an emic difference — the sociocultural approach recognises that culture shapes not just the causes of mental distress but how it is experienced and expressed.',
+            approach: 'sociocultural',
+            scenario: 'cultural_depression'
+        },
+        // Scenario: Aggression in sport
+        {
+            question: 'Scenario: A rugby player becomes increasingly aggressive on the field. How would Bandura\'s social learning theory explain this?',
+            options: [
+                'High testosterone drives aggressive behaviour',
+                'The player has observed and imitated aggressive models (coaches, teammates) who were rewarded for aggression',
+                'Unconscious aggression (Thanatos) is being channelled into sport',
+                'Confirmation bias makes the player focus on aggressive strategies'
+            ],
+            correct: 1,
+            explanation: 'Bandura\'s social learning theory would explain this through observation and vicarious reinforcement — the player has seen aggressive models rewarded (praise, game success) and imitates this.',
+            approach: 'behaviourist',
+            scenario: 'sport_aggression'
+        },
+        // Scenario: Self-efficacy vs self-actualisation
+        {
+            question: 'Scenario: A student believes they can pass the exam if they study hard (but they haven\'t started yet). This belief best reflects:',
+            options: [
+                'Self-actualisation (Maslow) — they have reached their full potential',
+                'Self-efficacy (Bandura) — belief in one\'s ability to succeed in a specific situation',
+                'Internal locus of control (Rotter) — belief that outcomes are within their control',
+                'Unconditional positive regard (Rogers) — acceptance without judgment'
+            ],
+            correct: 1,
+            explanation: 'Self-efficacy (Bandura) is specifically about belief in one\'s capability to succeed in a particular task. Internal locus of control is broader; self-actualisation is about reaching full potential, not just belief.',
+            approach: 'behaviourist',
+            scenario: 'self_efficacy'
+        },
+        // Scenario: Attachment in adulthood
+        {
+            question: 'Scenario: A person avoids emotional intimacy in relationships. Both the psychodynamic and humanistic approaches could explain this. What is the KEY difference?',
+            options: [
+                'Psychodynamic: insecure attachment from childhood creates unconscious patterns. Humanistic: conditions of worth make the person fear rejection if they show their true self.',
+                'Psychodynamic: cognitive distortions about relationships. Humanistic: chemical imbalance.',
+                'They would explain it identically.',
+                'Psychodynamic: conformity to social norms. Humanistic: biological predisposition.'
+            ],
+            correct: 0,
+            explanation: 'The psychodynamic approach traces this to unconscious attachment patterns formed in childhood (Bowlby), while the humanistic approach focuses on conditions of worth — fear that love is conditional on being "perfect."',
+            approach: 'psychodynamic',
+            scenario: 'intimacy'
+        },
+        // Cross-cutting
+        {
+            question: 'Why is it important to consider MULTIPLE approaches when explaining behaviour?',
+            options: [
+                'Because each approach on its own is completely wrong',
+                'Because behaviour is complex and multi-determined — different approaches explain different aspects of the same behaviour',
+                'Because examiners want longer answers',
+                'Because there is no correct approach in psychology'
+            ],
+            correct: 1,
+            explanation: 'Behaviour is complex and multi-determined. Each approach illuminates different aspects — a full understanding often requires integrating biological, psychological, and social factors (the biopsychosocial model).',
+            approach: 'cognitive',
+            scenario: 'cross_cutting'
+        },
+        {
+            question: 'The biopsychosocial model suggests that mental health conditions are best understood through:',
+            options: [
+                'Biological factors alone',
+                'Social factors alone',
+                'The interaction of biological, psychological, and social factors',
+                'Unconscious drives alone'
+            ],
+            correct: 2,
+            explanation: 'The biopsychosocial model integrates the biological (genes, neurotransmitters), psychological (cognition, emotion), and social (culture, relationships) approaches for a holistic understanding.',
+            approach: 'biological',
+            scenario: 'cross_cutting'
+        }
+    ]
+};
+
+// ============================================
+// PRE-TEST — Intro screen
+// ============================================
+
+// Flag: when true, the next "Next Question" click starts the real quiz instead of advancing
+let pretestIntroShowing = false;
+
+// Show a brief intro explaining the pre-test concept, then start the quiz
+function showPretestIntro() {
+    const questionDiv = document.querySelector('.quiz-question');
+    const answersDiv = document.getElementById('quiz-answers');
+    const feedback = document.getElementById('quiz-feedback');
+    const nextBtn = document.getElementById('next-question');
+
+    // Hide progress bar text (we haven't started yet)
+    document.getElementById('quiz-current').textContent = '0';
+    document.getElementById('quiz-progress-fill').style.width = '0%';
+
+    questionDiv.querySelector('.question-text').textContent = '';
+    answersDiv.innerHTML = '';
+    feedback.innerHTML = '';
+    feedback.className = 'quiz-feedback';
+
+    // Show intro message in the feedback area
+    feedback.className = 'quiz-feedback pretest-intro';
+    feedback.innerHTML = `
+        <strong>Pre-Test Mode</strong><br>
+        Try answering these questions <em>before</em> studying. Getting them wrong is expected and actually helps you learn!<br><br>
+        Research shows that attempting to answer questions before studying (the <strong>pretesting effect</strong>) primes your brain to pay attention to the right information when you do study.
+    `;
+
+    // Show "Begin" button — uses the existing nextQuestion handler
+    nextBtn.textContent = 'Begin Pre-Test';
+    nextBtn.style.display = 'inline-block';
+    pretestIntroShowing = true;
+}
+
+// ============================================
+// FORGETTING CURVE VISUALISATION
+// ============================================
+
+// Calculate retention for a single card using R = e^(-t/S)
+// t = days since last review, S = stability (card interval, floored to 0.5)
+function calculateRetention(cardState) {
+    if (!cardState.lastReviewed) return 0; // Never reviewed = 0% retention
+    const now = new Date();
+    const lastReview = new Date(cardState.lastReviewed);
+    const daysSince = Math.max(0, (now - lastReview) / (1000 * 60 * 60 * 24));
+    const stability = Math.max(0.5, cardState.interval || 0.5);
+    return Math.exp(-daysSince / stability);
+}
+
+// Get per-approach average retention for the current level
+function getApproachRetention() {
+    const levelCards = currentLevel === 2 ? flashcards.level2 : flashcards.level3;
+    const approaches = {};
+
+    levelCards.forEach((card, i) => {
+        const cardId = `${card.category}_${i}`;
+        const state = getCardSRState(cardId);
+
+        if (!approaches[card.category]) {
+            approaches[card.category] = { totalRetention: 0, reviewedCount: 0, totalCards: 0, latestReview: null };
+        }
+        approaches[card.category].totalCards++;
+
+        if (state.lastReviewed) {
+            const retention = calculateRetention(state);
+            approaches[card.category].totalRetention += retention;
+            approaches[card.category].reviewedCount++;
+            // Track latest review date for fade date calculation
+            if (!approaches[card.category].latestReview || state.lastReviewed > approaches[card.category].latestReview) {
+                approaches[card.category].latestReview = state.lastReviewed;
+            }
+        }
+        // Unreviewed cards count as 0 retention (already the default)
+    });
+
+    // Calculate average retention per approach
+    const result = {};
+    for (const [key, data] of Object.entries(approaches)) {
+        const avgRetention = data.totalCards > 0 ? data.totalRetention / data.totalCards : 0;
+        result[key] = {
+            retention: avgRetention,
+            reviewedCount: data.reviewedCount,
+            totalCards: data.totalCards,
+            latestReview: data.latestReview
+        };
+    }
+    return result;
+}
+
+// Calculate when an approach drops below 80% retention
+// Uses average stability across reviewed cards in the approach
+function calculateFadeDate(approachKey, levelCards) {
+    const approachCards = levelCards.filter(c => c.category === approachKey);
+    let totalStability = 0;
+    let reviewedCount = 0;
+    let latestReview = null;
+
+    approachCards.forEach((card, i) => {
+        // Find the original index in the full level array for the card ID
+        const origIndex = levelCards.indexOf(card);
+        const cardId = `${card.category}_${origIndex}`;
+        const state = getCardSRState(cardId);
+
+        if (state.lastReviewed) {
+            totalStability += Math.max(0.5, state.interval || 0.5);
+            reviewedCount++;
+            if (!latestReview || state.lastReviewed > latestReview) {
+                latestReview = state.lastReviewed;
+            }
+        }
+    });
+
+    if (reviewedCount === 0 || !latestReview) return null;
+
+    const avgStability = totalStability / reviewedCount;
+    // t = S * ln(1/0.8) = S * 0.2231 days after latest review
+    const daysToFade = avgStability * 0.2231;
+    const fadeDate = new Date(latestReview);
+    fadeDate.setDate(fadeDate.getDate() + Math.ceil(daysToFade));
+    return fadeDate;
+}
+
+// Return CSS class based on retention percentage
+function getRetentionColourClass(retention) {
+    if (retention >= 0.8) return 'fc-green';
+    if (retention >= 0.5) return 'fc-amber';
+    return 'fc-red';
+}
+
+// Render the forgetting curve panel in the progress dashboard
+function renderForgettingCurvePanel() {
+    const displayEl = document.getElementById('fc-display');
+    if (!displayEl) return;
+
+    const approachData = getApproachRetention();
+    const levelCards = currentLevel === 2 ? flashcards.level2 : flashcards.level3;
+
+    // Check if any cards have been reviewed
+    const anyReviewed = Object.values(approachData).some(d => d.reviewedCount > 0);
+    if (!anyReviewed) {
+        displayEl.innerHTML = '<p class="empty-state">No flashcard review data yet. Review some flashcards to see your predicted retention here.</p>';
+        return;
+    }
+
+    const approachNames = {
+        biological: '🧬 Biological',
+        behaviourist: '🔔 Behaviourist',
+        cognitive: '💭 Cognitive',
+        humanistic: '🌱 Humanistic',
+        psychodynamic: '🛋️ Psychodynamic',
+        sociocultural: '🌍 Sociocultural'
+    };
+
+    let html = '';
+    let lowestApproach = null;
+    let lowestRetention = 1;
+
+    for (const [key, data] of Object.entries(approachData)) {
+        const pct = Math.round(data.retention * 100);
+        const colourClass = getRetentionColourClass(data.retention);
+
+        // Fade date calculation
+        let fadeInfo = '';
+        if (data.reviewedCount > 0) {
+            const fadeDate = calculateFadeDate(key, levelCards);
+            if (fadeDate) {
+                const now = new Date();
+                if (fadeDate <= now) {
+                    fadeInfo = '<span class="fc-fade-info fc-red">Below 80% — review now!</span>';
+                } else {
+                    const dateStr = fadeDate.toLocaleDateString('en-NZ', { day: 'numeric', month: 'short' });
+                    fadeInfo = `<span class="fc-fade-info">Review by ${dateStr} to stay above 80%</span>`;
+                }
+            }
+        } else {
+            fadeInfo = '<span class="fc-fade-info fc-muted">Not yet reviewed</span>';
+        }
+
+        // Track lowest for motivational message
+        if (data.reviewedCount > 0 && data.retention < lowestRetention) {
+            lowestRetention = data.retention;
+            lowestApproach = key;
+        }
+
+        html += `
+            <div class="fc-approach-row">
+                <div class="fc-label-row">
+                    <span class="fc-approach-name">${approachNames[key] || key}</span>
+                    <span class="fc-pct ${colourClass}">${pct}%</span>
+                </div>
+                <div class="fc-bar-track">
+                    <div class="fc-threshold-line"></div>
+                    <div class="fc-bar-fill ${colourClass}" style="width: ${pct}%"></div>
+                </div>
+                ${fadeInfo}
+            </div>
+        `;
+    }
+
+    // Motivational message
+    if (lowestApproach && lowestRetention < 0.8) {
+        const name = approachNames[lowestApproach] || lowestApproach;
+        html += `<div class="fc-motivation">Review ${name} now!</div>`;
+    } else if (lowestRetention >= 0.8) {
+        html += '<div class="fc-motivation fc-motivation-good">All above 80% — great work!</div>';
+    }
+
+    displayEl.innerHTML = html;
+}
+
+// ============================================
+// FIREBASE INTEGRATION — Class Comparison
+// ============================================
+
+const LS_CLASS_CODE = 'psych_class_code';
+
+// Firebase state
+let firebaseEnabled = false;
+let db = null;
+
+// Firebase config — replace with your actual project config
+const FIREBASE_CONFIG = {
+    apiKey: "AIzaSyB8BUglvrjF6gcyHG3Oi8vm_YKWrgFMtvo",
+    authDomain: "psychologyrevision-9cf79.firebaseapp.com",
+    projectId: "psychologyrevision-9cf79",
+    storageBucket: "psychologyrevision-9cf79.firebasestorage.app",
+    messagingSenderId: "266444429967",
+    appId: "1:266444429967:web:cbb19c6dd630aa68e52efa",
+    measurementId: "G-YWQWD7XMXF"
+};
+
+// Initialise Firebase if the SDK loaded successfully
+function initializeFirebase() {
+    if (typeof firebase === 'undefined') {
+        console.warn('Firebase SDK not loaded — class comparison features disabled.');
+        return;
+    }
+
+    try {
+        firebase.initializeApp(FIREBASE_CONFIG);
+        db = firebase.firestore();
+
+        // Enable offline persistence for resilient data sync
+        db.enablePersistence({ synchronizeTabs: true }).catch(err => {
+            if (err.code === 'failed-precondition') {
+                console.warn('Firestore persistence: multiple tabs open, only one can enable.');
+            } else if (err.code === 'unimplemented') {
+                console.warn('Firestore persistence not supported in this browser.');
+            }
+        });
+
+        firebaseEnabled = true;
+    } catch (err) {
+        console.warn('Firebase initialisation failed:', err.message);
+        firebaseEnabled = false;
+    }
+}
+
+// Class code localStorage wrappers
+function getClassCode() {
+    return localStorage.getItem(LS_CLASS_CODE) || null;
+}
+
+function setClassCode(code) {
+    if (code) {
+        localStorage.setItem(LS_CLASS_CODE, code.toUpperCase().trim());
+    } else {
+        localStorage.removeItem(LS_CLASS_CODE);
+    }
+}
+
+// ============================================
+// CLASS CODE MODAL
+// ============================================
+
+function showClassCodeModal() {
+    const modal = document.getElementById('class-code-modal');
+    if (modal) modal.style.display = 'flex';
+}
+
+function hideClassCodeModal() {
+    const modal = document.getElementById('class-code-modal');
+    if (modal) modal.style.display = 'none';
+}
+
+// Set up class code modal and settings row
+function initializeClassCode() {
+    const joinBtn = document.getElementById('class-code-join');
+    const skipBtn = document.getElementById('class-code-skip');
+    const settingsBtn = document.getElementById('class-settings-btn');
+    const input = document.getElementById('class-code-input');
+
+    if (joinBtn) {
+        joinBtn.addEventListener('click', () => {
+            const code = input ? input.value.trim() : '';
+            if (code.length >= 3) {
+                setClassCode(code);
+                hideClassCodeModal();
+                updateClassCodeDisplay();
+                // Re-render class comparison panel if on progress page
+                if (currentSection === 'progress') renderClassComparisonPanel();
+            }
+        });
+    }
+
+    if (skipBtn) {
+        skipBtn.addEventListener('click', () => {
+            hideClassCodeModal();
+        });
+    }
+
+    // Allow Enter key to submit
+    if (input) {
+        input.addEventListener('keydown', (e) => {
+            if (e.key === 'Enter') joinBtn?.click();
+        });
+    }
+
+    if (settingsBtn) {
+        settingsBtn.addEventListener('click', () => {
+            if (input) input.value = getClassCode() || '';
+            showClassCodeModal();
+        });
+    }
+
+    // Show modal on first load if no class code set
+    if (!getClassCode()) {
+        // Delay slightly so the page loads first
+        setTimeout(showClassCodeModal, 500);
+    }
+
+    updateClassCodeDisplay();
+}
+
+// Update the class code display in the progress settings row
+function updateClassCodeDisplay() {
+    const displayEl = document.getElementById('class-code-display');
+    if (displayEl) {
+        const code = getClassCode();
+        displayEl.textContent = code || 'None';
+    }
+}
+
+// ============================================
+// FIREBASE — Send Quiz Stats
+// ============================================
+
+// Send per-approach and per-question stats to Firestore on quiz completion
+// quizResults: array of {correct, questionId, approach} objects
+function sendQuizStatsToFirebase(level, quizResults) {
+    if (!firebaseEnabled || !db || !getClassCode()) return;
+
+    const classCode = getClassCode();
+    const levelKey = `level${level}`;
+
+    try {
+        const increment = firebase.firestore.FieldValue.increment;
+
+        // Aggregate approach-level stats from quiz results
+        const approachStats = {};
+        quizResults.forEach(r => {
+            if (r.approach) {
+                if (!approachStats[r.approach]) approachStats[r.approach] = { attempts: 0, correct: 0 };
+                approachStats[r.approach].attempts++;
+                if (r.correct) approachStats[r.approach].correct++;
+            }
+        });
+
+        // Write approach-level stats
+        for (const [approach, stats] of Object.entries(approachStats)) {
+            db.collection('classes').doc(classCode)
+                .collection(levelKey).doc('approaches')
+                .collection('items').doc(approach)
+                .set({
+                    totalAttempts: increment(stats.attempts),
+                    totalCorrect: increment(stats.correct)
+                }, { merge: true })
+                .catch(err => console.warn('Firebase write (approach) failed:', err.message));
+        }
+
+        // Write per-question stats
+        quizResults.forEach(r => {
+            if (r.questionId) {
+                db.collection('classes').doc(classCode)
+                    .collection(levelKey).doc('questions')
+                    .collection('items').doc(r.questionId)
+                    .set({
+                        attempts: increment(1),
+                        correct: increment(r.correct ? 1 : 0)
+                    }, { merge: true })
+                    .catch(err => console.warn('Firebase write (question) failed:', err.message));
+            }
+        });
+    } catch (err) {
+        console.warn('sendQuizStatsToFirebase error:', err.message);
+    }
+}
+
+// ============================================
+// FIREBASE — Read Class Stats
+// ============================================
+
+// Fetch per-approach stats for the class from Firestore
+async function fetchClassApproachStats(level) {
+    if (!firebaseEnabled || !db || !getClassCode()) return null;
+
+    const classCode = getClassCode();
+    const levelKey = `level${level}`;
+
+    try {
+        const snapshot = await db.collection('classes').doc(classCode)
+            .collection(levelKey).doc('approaches')
+            .collection('items').get();
+
+        const stats = {};
+        snapshot.forEach(doc => {
+            const data = doc.data();
+            stats[doc.id] = {
+                totalAttempts: data.totalAttempts || 0,
+                totalCorrect: data.totalCorrect || 0
+            };
+        });
+        return stats;
+    } catch (err) {
+        console.warn('fetchClassApproachStats error:', err.message);
+        return null;
+    }
+}
+
+// ============================================
+// NATIONAL STATS — Hardcoded Benchmarks
+// ============================================
+
+const NATIONAL_STATS = {
+    level2: {
+        biological:    { difficulty: 'medium', avgScore: 65 },
+        behaviourist:  { difficulty: 'easy',   avgScore: 72 },
+        cognitive:     { difficulty: 'medium', avgScore: 63 },
+        humanistic:    { difficulty: 'easy',   avgScore: 70 },
+        psychodynamic: { difficulty: 'hard',   avgScore: 55 },
+        sociocultural: { difficulty: 'medium', avgScore: 62 }
+    },
+    level3: {
+        biological:    { difficulty: 'medium', avgScore: 60 },
+        behaviourist:  { difficulty: 'medium', avgScore: 65 },
+        cognitive:     { difficulty: 'hard',   avgScore: 58 },
+        humanistic:    { difficulty: 'medium', avgScore: 62 },
+        psychodynamic: { difficulty: 'hard',   avgScore: 52 },
+        sociocultural: { difficulty: 'medium', avgScore: 60 }
+    }
+};
+
+// ============================================
+// PERSONAL APPROACH SCORES — from quiz history
+// ============================================
+
+// Calculate per-approach accuracy from quiz history
+function calculatePersonalApproachScores() {
+    const history = loadQuizHistory();
+    const levelHistory = history.filter(h => h.level === currentLevel);
+
+    // We need the enriched quizAnswers from recent quizzes — but quiz history only
+    // stores score/total, not per-approach breakdowns. So we use the current quizAnswers
+    // if available, plus any approach data from interleaved/compare results stored in
+    // interleavedApproachResults (which resets each quiz). For the dashboard, we
+    // aggregate from the quiz history total scores as a rough per-approach proxy.
+
+    // For a more accurate view, return the interleaved approach results if we have them
+    // from the most recent quiz session
+    return interleavedApproachResults;
+}
+
+// ============================================
+// CLASS COMPARISON PANEL — Render
+// ============================================
+
+// Render the class comparison panel with You vs Class bars + national badges
+async function renderClassComparisonPanel() {
+    const displayEl = document.getElementById('class-comparison-display');
+    if (!displayEl) return;
+
+    const classCode = getClassCode();
+
+    // No class code — show join prompt
+    if (!classCode) {
+        displayEl.innerHTML = '<p class="empty-state">Join a class to compare your scores with classmates.</p>';
+        return;
+    }
+
+    // No Firebase — show offline message
+    if (!firebaseEnabled || !db) {
+        displayEl.innerHTML = '<p class="empty-state">Class comparison unavailable (offline or Firebase not configured).</p>';
+        return;
+    }
+
+    // Show loading state
+    displayEl.innerHTML = '<p class="empty-state">Loading class data...</p>';
+
+    // Fetch class data from Firestore
+    const classStats = await fetchClassApproachStats(currentLevel);
+
+    if (!classStats || Object.keys(classStats).length === 0) {
+        displayEl.innerHTML = '<p class="empty-state">No class data yet. Complete quizzes to contribute!</p>';
+        return;
+    }
+
+    const approachNames = {
+        biological: '🧬 Biological',
+        behaviourist: '🔔 Behaviourist',
+        cognitive: '💭 Cognitive',
+        humanistic: '🌱 Humanistic',
+        psychodynamic: '🛋️ Psychodynamic',
+        sociocultural: '🌍 Sociocultural'
+    };
+
+    const levelKey = `level${currentLevel}`;
+    const nationalData = NATIONAL_STATS[levelKey] || {};
+
+    // Calculate personal scores from quiz history
+    const personalScores = calculatePersonalApproachScores();
+
+    let html = '';
+    const allApproaches = ['biological', 'behaviourist', 'cognitive', 'humanistic', 'psychodynamic', 'sociocultural'];
+
+    for (const approach of allApproaches) {
+        const classStat = classStats[approach];
+        const nationalStat = nationalData[approach];
+
+        // Class average
+        let classAvg = null;
+        if (classStat && classStat.totalAttempts > 0) {
+            classAvg = Math.round((classStat.totalCorrect / classStat.totalAttempts) * 100);
+        }
+
+        // Personal score from interleaved results (if available)
+        let personalPct = null;
+        if (personalScores[approach] && personalScores[approach].total > 0) {
+            personalPct = Math.round((personalScores[approach].correct / personalScores[approach].total) * 100);
+        }
+
+        // National difficulty badge
+        let badge = '';
+        if (nationalStat) {
+            const badgeClass = `sp-badge-${nationalStat.difficulty}`;
+            badge = `<span class="sp-badge ${badgeClass}">${nationalStat.difficulty}</span>`;
+        }
+
+        html += `
+            <div class="cc-approach-row">
+                <div class="cc-label-row">
+                    <span class="cc-approach-name">${approachNames[approach] || approach}</span>
+                    ${badge}
+                </div>
+                <div class="cc-bars">
+        `;
+
+        // "You" bar (only if we have personal data)
+        if (personalPct !== null) {
+            html += `
+                    <div class="cc-bar-row">
+                        <span class="cc-bar-label">You</span>
+                        <div class="cc-bar-track">
+                            <div class="cc-bar-fill cc-bar-you" style="width: ${personalPct}%"></div>
+                        </div>
+                        <span class="cc-bar-pct">${personalPct}%</span>
+                    </div>
+            `;
+        }
+
+        // "Class" bar
+        if (classAvg !== null) {
+            html += `
+                    <div class="cc-bar-row">
+                        <span class="cc-bar-label">Class</span>
+                        <div class="cc-bar-track">
+                            <div class="cc-bar-fill cc-bar-class" style="width: ${classAvg}%"></div>
+                        </div>
+                        <span class="cc-bar-pct">${classAvg}%</span>
+                    </div>
+            `;
+        }
+
+        // National average line
+        if (nationalStat) {
+            html += `
+                    <div class="cc-bar-row">
+                        <span class="cc-bar-label">National</span>
+                        <div class="cc-bar-track">
+                            <div class="cc-bar-fill cc-bar-national" style="width: ${nationalStat.avgScore}%"></div>
+                        </div>
+                        <span class="cc-bar-pct">${nationalStat.avgScore}%</span>
+                    </div>
+            `;
+        }
+
+        html += `
+                </div>
+            </div>
+        `;
+    }
+
+    // Add a note about the class
+    html += `<div class="cc-footer">Class: <strong>${classCode}</strong></div>`;
+
+    displayEl.innerHTML = html;
 }

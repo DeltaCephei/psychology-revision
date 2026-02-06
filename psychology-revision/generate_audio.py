@@ -97,6 +97,23 @@ The limitations are that it may underestimate individual differences, it's diffi
 For key debates, the WEIRD samples problem is significant — around 96 percent of psychology participants come from Western, Educated, Industrialised, Rich, Democratic countries, which seriously limits how generalisable the findings are. The culture of honour study by Cohen and colleagues in 1996 showed that cultural insults produced measurable cortisol and testosterone spikes, demonstrating that culture can literally shape our biology. Research by Milgram and the Stanford Prison Experiment showed situational determinism — that social situations can overpower individual personality and conscience. And ethnocentrism is a problem in psychology — tests like Ainsworth's Strange Situation impose Western norms on other cultures, which can produce misleading results.
 """,
 
+    # ── Section intros ─────────────────────────────────────────────────
+    "level2_summaries_intro": """
+Topic Summaries.
+
+Psychology uses six major approaches to explain why people think, feel, and behave the way they do. Each approach offers a different lens — from biology and conditioning to culture and the unconscious mind. Click on each one below to explore its key ideas, strengths, limitations, and debates.
+
+You'll notice coloured circles on each card — red, amber, and green. Use these to rate your own confidence in each approach. Red means you're not confident, amber means somewhat confident, and green means you feel confident. This helps you see at a glance which approaches need more work. Research by Dunlosky and colleagues in 2013 showed that identifying your weak spots and focusing your study time there — a skill called metacognition — is one of the most effective revision strategies you can use.
+""",
+
+    "level3_summaries_intro": """
+Topic Summaries.
+
+Psychology uses six major approaches to explain why people think, feel, and behave the way they do. Each approach offers a different lens — from biology and conditioning to culture and the unconscious mind. Click on each one below to explore its key ideas, strengths, limitations, and debates.
+
+You'll notice coloured circles on each card — red, amber, and green. Use these to rate your own confidence in each approach. Red means you're not confident, amber means somewhat confident, and green means you feel confident. This helps you see at a glance which approaches need more work. Research by Dunlosky and colleagues in 2013 showed that identifying your weak spots and focusing your study time there — a skill called metacognition — is one of the most effective revision strategies you can use.
+""",
+
     # ── Level 3 ──────────────────────────────────────────────────────────
     "level3_biological": """
 The Biological Approach — Level 3.

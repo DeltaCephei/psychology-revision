@@ -29,8 +29,12 @@
     <main>
         <!-- Topic Summaries Section -->
         <section id="summaries" class="section active">
-            <h2>Topic Summaries</h2>
-            <p class="section-intro">Click on each approach to expand and learn more.</p>
+            <div class="section-header-row">
+                <h2>Topic Summaries</h2>
+                <button class="audio-btn section-audio-btn" data-audio="summaries_intro" title="Listen to introduction">▶</button>
+            </div>
+            <p class="section-intro">Psychology uses six major approaches to explain why people think, feel, and behave the way they do. Each approach offers a different lens — from biology and conditioning to culture and the unconscious mind. Click on each one below to explore its key ideas, strengths, limitations, and debates.</p>
+            <p class="section-intro section-intro-secondary">Use the <strong>coloured circles</strong> on each card to self-assess your confidence: <span class="inline-tl tl-dot-red">&#9679;</span> not confident, <span class="inline-tl tl-dot-amber">&#9679;</span> somewhat confident, <span class="inline-tl tl-dot-green">&#9679;</span> confident. This helps you see at a glance which approaches need more work — research shows that identifying your weak spots and focusing study time there (metacognition) is one of the most effective revision strategies (Dunlosky et al., 2013).</p>
 
             <div class="approaches-grid">
                 <!-- Biological Approach -->
@@ -38,6 +42,11 @@
                     <div class="card-header">
                         <span class="card-icon">🧬</span>
                         <h3>Biological Approach</h3>
+                        <div class="traffic-lights" data-approach="biological">
+                            <button class="tl-btn tl-red" data-colour="red" title="Not confident">&#9679;</button>
+                            <button class="tl-btn tl-amber" data-colour="amber" title="Somewhat confident">&#9679;</button>
+                            <button class="tl-btn tl-green" data-colour="green" title="Confident">&#9679;</button>
+                        </div>
                         <button class="audio-btn" data-audio="biological" title="Listen to summary">▶</button>
                     </div>
                     <div class="card-content">
@@ -107,6 +116,11 @@
                     <div class="card-header">
                         <span class="card-icon">🔔</span>
                         <h3>Behaviourist Approach</h3>
+                        <div class="traffic-lights" data-approach="behaviourist">
+                            <button class="tl-btn tl-red" data-colour="red" title="Not confident">&#9679;</button>
+                            <button class="tl-btn tl-amber" data-colour="amber" title="Somewhat confident">&#9679;</button>
+                            <button class="tl-btn tl-green" data-colour="green" title="Confident">&#9679;</button>
+                        </div>
                         <button class="audio-btn" data-audio="behaviourist" title="Listen to summary">▶</button>
                     </div>
                     <div class="card-content">
@@ -180,6 +194,11 @@
                     <div class="card-header">
                         <span class="card-icon">💭</span>
                         <h3>Cognitive Approach</h3>
+                        <div class="traffic-lights" data-approach="cognitive">
+                            <button class="tl-btn tl-red" data-colour="red" title="Not confident">&#9679;</button>
+                            <button class="tl-btn tl-amber" data-colour="amber" title="Somewhat confident">&#9679;</button>
+                            <button class="tl-btn tl-green" data-colour="green" title="Confident">&#9679;</button>
+                        </div>
                         <button class="audio-btn" data-audio="cognitive" title="Listen to summary">▶</button>
                     </div>
                     <div class="card-content">
@@ -251,6 +270,11 @@
                     <div class="card-header">
                         <span class="card-icon">🌱</span>
                         <h3>Humanistic Approach</h3>
+                        <div class="traffic-lights" data-approach="humanistic">
+                            <button class="tl-btn tl-red" data-colour="red" title="Not confident">&#9679;</button>
+                            <button class="tl-btn tl-amber" data-colour="amber" title="Somewhat confident">&#9679;</button>
+                            <button class="tl-btn tl-green" data-colour="green" title="Confident">&#9679;</button>
+                        </div>
                         <button class="audio-btn" data-audio="humanistic" title="Listen to summary">▶</button>
                     </div>
                     <div class="card-content">
@@ -322,6 +346,11 @@
                     <div class="card-header">
                         <span class="card-icon">🛋️</span>
                         <h3>Psychodynamic Approach</h3>
+                        <div class="traffic-lights" data-approach="psychodynamic">
+                            <button class="tl-btn tl-red" data-colour="red" title="Not confident">&#9679;</button>
+                            <button class="tl-btn tl-amber" data-colour="amber" title="Somewhat confident">&#9679;</button>
+                            <button class="tl-btn tl-green" data-colour="green" title="Confident">&#9679;</button>
+                        </div>
                         <button class="audio-btn" data-audio="psychodynamic" title="Listen to summary">▶</button>
                     </div>
                     <div class="card-content">
@@ -394,6 +423,11 @@
                     <div class="card-header">
                         <span class="card-icon">🌍</span>
                         <h3>Sociocultural Approach</h3>
+                        <div class="traffic-lights" data-approach="sociocultural">
+                            <button class="tl-btn tl-red" data-colour="red" title="Not confident">&#9679;</button>
+                            <button class="tl-btn tl-amber" data-colour="amber" title="Somewhat confident">&#9679;</button>
+                            <button class="tl-btn tl-green" data-colour="green" title="Confident">&#9679;</button>
+                        </div>
                         <button class="audio-btn" data-audio="sociocultural" title="Listen to summary">▶</button>
                     </div>
                     <div class="card-content">
@@ -646,6 +680,8 @@
                         <option value="truefalse">True/False</option>
                         <option value="mixed">Mixed</option>
                         <option value="interleaved">Interleaved Practice</option>
+                        <option value="compare">Compare Approaches</option>
+                        <option value="pretest">Pre-Test</option>
                     </select>
                 </div>
                 <div class="quiz-mode">
@@ -821,6 +857,44 @@
                         <p class="empty-state">No confidence data yet. Rate your confidence before flipping flashcards to build data here.</p>
                     </div>
                 </div>
+
+                <!-- Self-Assessment (Traffic Lights) Panel -->
+                <div class="progress-panel" id="panel-self-assessment">
+                    <h3>Self-Assessment</h3>
+                    <div class="self-assessment-display" id="self-assessment-display">
+                        <p class="empty-state">No self-assessment yet. Use the traffic light buttons on approach cards to rate your confidence.</p>
+                    </div>
+                </div>
+
+                <!-- Pre-Test Comparison Panel -->
+                <div class="progress-panel" id="panel-pretest">
+                    <h3>Pre-Test vs Post-Test</h3>
+                    <div class="pretest-display" id="pretest-display">
+                        <p class="empty-state">No pre-test data yet. Try a Pre-Test quiz before studying, then take a regular quiz afterwards to see your improvement.</p>
+                    </div>
+                </div>
+
+                <!-- Forgetting Curve Panel -->
+                <div class="progress-panel" id="panel-forgetting-curve">
+                    <h3>Forgetting Curve</h3>
+                    <div class="fc-display" id="fc-display">
+                        <p class="empty-state">No flashcard review data yet. Review some flashcards to see your predicted retention here.</p>
+                    </div>
+                </div>
+
+                <!-- Class Comparison Panel -->
+                <div class="progress-panel" id="panel-class-comparison">
+                    <h3>Class Comparison</h3>
+                    <div class="class-comparison-display" id="class-comparison-display">
+                        <p class="empty-state">Join a class to compare your scores with classmates.</p>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Class settings row -->
+            <div class="class-settings-row" id="class-settings-row">
+                <span class="class-settings-label">Class Code: <strong id="class-code-display">None</strong></span>
+                <button class="class-settings-btn" id="class-settings-btn">Change</button>
             </div>
 
             <div class="progress-footer">
@@ -833,6 +907,24 @@
         <p>NCEA Psychology Revision | Created for NZ Students</p>
         <p class="footer-note">Remember: Understanding the approaches helps you analyse behaviour from multiple perspectives!</p>
     </footer>
+
+    <!-- Class Code Modal -->
+    <div class="modal-overlay" id="class-code-modal" style="display: none;">
+        <div class="modal-content">
+            <h3>Join a Class</h3>
+            <p>Enter a class code from your teacher to compare your quiz scores with your classmates.</p>
+            <input type="text" id="class-code-input" class="modal-input" placeholder="e.g. PSYCH2026" maxlength="16" autocomplete="off">
+            <div class="modal-actions">
+                <button class="modal-btn modal-btn-primary" id="class-code-join">Join</button>
+                <button class="modal-btn modal-btn-secondary" id="class-code-skip">Skip</button>
+            </div>
+            <p class="modal-privacy">Only anonymous quiz scores are shared. No names or personal data.</p>
+        </div>
+    </div>
+
+    <!-- Firebase SDK (compat) — loads before script.js for class comparison feature -->
+    <script src="https://www.gstatic.com/firebasejs/10.14.1/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/10.14.1/firebase-firestore-compat.js"></script>
 
     <script src="script.js"></script>
 </body>
