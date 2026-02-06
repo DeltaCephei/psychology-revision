@@ -728,6 +728,7 @@ document.addEventListener('DOMContentLoaded', () => {
     initializeFlashcards();
     initializeQuiz();
     initializeAudio();
+    initializeFlashcardAudio();
     updateContentForLevel();
 });
 
@@ -871,19 +872,26 @@ function initializeFlashcards() {
 function filterFlashcards(category) {
     const levelCards = currentLevel === 2 ? flashcards.level2 : flashcards.level3;
 
+    // Tag each card with its original array index (for audio file mapping)
+    const tagged = levelCards.map((card, i) => ({ ...card, _origIndex: i }));
+
     if (category === 'all') {
-        filteredFlashcards = [...levelCards];
+        filteredFlashcards = tagged;
     } else {
-        filteredFlashcards = levelCards.filter(card => card.category === category);
+        filteredFlashcards = tagged.filter(card => card.category === category);
     }
 
     currentFlashcardIndex = 0;
+    // Stop flashcard audio when filtering
+    stopFlashcardAudio();
     updateFlashcard();
 }
 
 function navigateFlashcard(direction) {
     const flashcard = document.getElementById('current-flashcard');
     flashcard.classList.remove('flipped');
+    // Stop audio when moving to a different card
+    stopFlashcardAudio();
 
     currentFlashcardIndex += direction;
     if (currentFlashcardIndex < 0) {
@@ -912,6 +920,7 @@ function updateFlashcard() {
 }
 
 function shuffleFlashcards() {
+    stopFlashcardAudio();
     for (let i = filteredFlashcards.length - 1; i > 0; i--) {
         const j = Math.floor(Math.random() * (i + 1));
         [filteredFlashcards[i], filteredFlashcards[j]] = [filteredFlashcards[j], filteredFlashcards[i]];
@@ -1176,9 +1185,67 @@ function stopCurrentAudio() {
         currentAudio.currentTime = 0;
     }
     if (currentAudioBtn) {
-        currentAudioBtn.textContent = '🔊';
+        currentAudioBtn.textContent = '▶';
         currentAudioBtn.classList.remove('playing');
     }
     currentAudio = null;
     currentAudioBtn = null;
+}
+
+// ============================================
+// FLASHCARD AUDIO
+// ============================================
+
+let fcAudio = null;  // Currently playing flashcard audio
+
+function initializeFlashcardAudio() {
+    const btn = document.getElementById('fc-audio-btn');
+    btn.addEventListener('click', toggleFlashcardAudio);
+}
+
+function toggleFlashcardAudio() {
+    const btn = document.getElementById('fc-audio-btn');
+
+    // If already playing, pause
+    if (fcAudio && !fcAudio.paused) {
+        fcAudio.pause();
+        btn.textContent = '▶';
+        btn.classList.remove('playing');
+        return;
+    }
+
+    // Stop any approach-card audio that might be playing
+    stopCurrentAudio();
+    stopFlashcardAudio();
+
+    // Build the file path from the current card's original index
+    if (filteredFlashcards.length === 0) return;
+    const card = filteredFlashcards[currentFlashcardIndex];
+    const idx = String(card._origIndex).padStart(2, '0');
+    const src = `audio/fc_l${currentLevel}_${idx}.mp3`;
+
+    fcAudio = new Audio(src);
+    btn.textContent = '⏸︎';
+    btn.classList.add('playing');
+
+    fcAudio.play();
+
+    fcAudio.addEventListener('ended', () => {
+        btn.textContent = '▶';
+        btn.classList.remove('playing');
+        fcAudio = null;
+    });
+}
+
+function stopFlashcardAudio() {
+    const btn = document.getElementById('fc-audio-btn');
+    if (fcAudio) {
+        fcAudio.pause();
+        fcAudio.currentTime = 0;
+        fcAudio = null;
+    }
+    if (btn) {
+        btn.textContent = '▶';
+        btn.classList.remove('playing');
+    }
 }
