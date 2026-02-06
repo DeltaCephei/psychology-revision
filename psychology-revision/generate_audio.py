@@ -106,6 +106,70 @@ Psychology uses six major approaches to explain why people think, feel, and beha
 You'll notice coloured circles on each card — red, amber, and green. Use these to rate your own confidence in each approach. Red means you're not confident, amber means somewhat confident, and green means you feel confident. This helps you see at a glance which approaches need more work. Research by Dunlosky and colleagues in 2013 showed that identifying your weak spots and focusing your study time there — a skill called metacognition — is one of the most effective revision strategies you can use.
 """,
 
+    "level2_flashcards_intro": """
+Flashcards — how to get the most from them.
+
+Active recall means trying to answer in your head before flipping the card. Research by Karpicke and Blunt in 2011 found that retrieval practice produced 50 percent more learning than other study methods — even more than concept mapping. So the effort of trying to remember is the point.
+
+Before each card, you'll rate how sure you are — not sure, think I know, or confident. This is called metacognitive monitoring — checking what you actually know versus what you think you know. Dunlosky and colleagues in 2013 identified self-testing and identifying weak spots as two of the most effective revision strategies.
+
+After flipping, you'll sometimes see a "why" or "how" question. These aren't marked — just say your answer out loud or in your head. The act of explaining is what matters. This is called elaborative interrogation — asking yourself to explain deepens encoding and connects new knowledge to what you already know. Dunlosky and colleagues found this was another highly effective technique.
+
+Then rate how well you knew it — hard, good, or easy. The app uses these ratings to schedule cards using spaced repetition, so the ones you find hardest come back sooner.
+""",
+
+    "level3_flashcards_intro": """
+Flashcards — how to get the most from them.
+
+Active recall means trying to answer in your head before flipping the card. Research by Karpicke and Blunt in 2011 found that retrieval practice produced 50 percent more learning than other study methods — even more than concept mapping. So the effort of trying to remember is the point.
+
+Before each card, you'll rate how sure you are — not sure, think I know, or confident. This is called metacognitive monitoring — checking what you actually know versus what you think you know. Dunlosky and colleagues in 2013 identified self-testing and identifying weak spots as two of the most effective revision strategies.
+
+After flipping, you'll sometimes see a "why" or "how" question. These aren't marked — just say your answer out loud or in your head. The act of explaining is what matters. This is called elaborative interrogation — asking yourself to explain deepens encoding and connects new knowledge to what you already know. Dunlosky and colleagues found this was another highly effective technique.
+
+Then rate how well you knew it — hard, good, or easy. The app uses these ratings to schedule cards using spaced repetition, so the ones you find hardest come back sooner.
+""",
+
+    "level2_quiz_intro": """
+Why quiz yourself?
+
+You might think quizzes are just for checking what you know, but they actually do much more than that. Research by Roediger and Karpicke in 2006 showed that students who quizzed themselves remembered significantly more than those who just re-read the material — even when the total study time was the same. This is called the testing effect.
+
+And here's the interesting part — getting a question wrong can actually be more useful than getting it right. When you make an error and then learn the correct answer, the contrast creates a stronger memory trace. Bjork and Bjork in 2011 called this a "desirable difficulty." The struggle is what makes it stick.
+
+Now, the quizzes in this app are a solid starting point, but I'd encourage you not to rely on them alone. One of the best things you can do is write your own questions. It forces you to think about what's actually important in each topic. You could create your own flashcards on paper, or use a free tool like Anki to build a personal deck you can review on your phone or computer.
+""",
+
+    "level3_quiz_intro": """
+Why quiz yourself?
+
+You might think quizzes are just for checking what you know, but they actually do much more than that. Research by Roediger and Karpicke in 2006 showed that students who quizzed themselves remembered significantly more than those who just re-read the material — even when the total study time was the same. This is called the testing effect.
+
+And here's the interesting part — getting a question wrong can actually be more useful than getting it right. When you make an error and then learn the correct answer, the contrast creates a stronger memory trace. Bjork and Bjork in 2011 called this a "desirable difficulty." The struggle is what makes it stick.
+
+Now, the quizzes in this app are a solid starting point, but I'd encourage you not to rely on them alone. One of the best things you can do is write your own questions. It forces you to think about what's actually important in each topic. You could create your own flashcards on paper, or use a free tool like Anki to build a personal deck you can review on your phone or computer.
+""",
+
+    "level2_braindump_intro": """
+Why Brain Dump works.
+
+Brain dumping is one of the most effective study techniques known. Research by Roediger and Karpicke in 2006 showed that actively retrieving information from memory strengthens it far more than re-reading or highlighting. This is called the testing effect.
+
+Here's how it works. Choose a topic below, then write down everything you can remember — don't peek! When you're done, reveal the actual summary and compare. Then focus your future study on the gaps you find.
+
+Even if you get things wrong, the effort of trying to remember builds stronger memory traces than passive review. So the struggle is actually the point — that's where the learning happens.
+""",
+
+    "level3_braindump_intro": """
+Why Brain Dump works.
+
+Brain dumping is one of the most effective study techniques known. Research by Roediger and Karpicke in 2006 showed that actively retrieving information from memory strengthens it far more than re-reading or highlighting. This is called the testing effect.
+
+Here's how it works. Choose a topic below, then write down everything you can remember — don't peek! When you're done, reveal the actual summary and compare. Then focus your future study on the gaps you find.
+
+Even if you get things wrong, the effort of trying to remember builds stronger memory traces than passive review. So the struggle is actually the point — that's where the learning happens.
+""",
+
     "level3_summaries_intro": """
 Topic Summaries.
 

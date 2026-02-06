@@ -387,6 +387,7 @@ main {
     justify-content: center;
     gap: 2rem;
     margin: 2rem 0;
+    position: relative;
 }
 
 .flashcard {
@@ -472,8 +473,12 @@ main {
     font-weight: 500;
 }
 
-/* Flashcard audio play button */
+/* Flashcard audio play button — positioned at top-left of card */
 .fc-audio-btn {
+    position: absolute;
+    top: -8px;
+    left: calc(50% - 258px);  /* Align with left edge of 500px card */
+    z-index: 10;
     width: 40px;
     height: 40px;
     border-radius: 50%;
@@ -485,6 +490,7 @@ main {
     display: flex;
     align-items: center;
     justify-content: center;
+    box-shadow: var(--shadow-sm);
 }
 
 .fc-audio-btn:hover {
@@ -814,10 +820,10 @@ footer {
     margin-top: 3rem;
 }
 
-.footer-note {
-    font-size: 0.9rem;
-    opacity: 0.8;
-    margin-top: 0.5rem;
+.footer-copyright {
+    font-size: 0.85rem;
+    opacity: 0.6;
+    margin-top: 0.75rem;
 }
 
 /* Responsive Design */
@@ -850,6 +856,12 @@ footer {
         flex-direction: column;
     }
 
+    /* On mobile, position audio btn at top-left of the card area */
+    .fc-audio-btn {
+        left: calc(50% - 183px);  /* Align with left edge of 350px card */
+        top: -8px;
+    }
+
     .flashcard-nav {
         display: none;
     }
@@ -877,9 +889,9 @@ footer {
 }
 
 /* ============================================
-   BRAIN DUMP — Explainer box
+   Section explainer box (Flashcards, Brain Dump)
    ============================================ */
-.braindump-explainer {
+.section-explainer {
     background: var(--card-bg);
     border-radius: var(--radius-xl);
     padding: 0;
@@ -888,7 +900,7 @@ footer {
     border-left: 4px solid var(--primary-color);
 }
 
-.braindump-explainer summary {
+.section-explainer summary {
     padding: 1rem 1.5rem;
     cursor: pointer;
     font-weight: 600;
@@ -901,37 +913,37 @@ footer {
 }
 
 /* Custom disclosure triangle */
-.braindump-explainer summary::before {
+.section-explainer summary::before {
     content: '▸';
     transition: transform 0.2s ease;
 }
 
-.braindump-explainer[open] summary::before {
+.section-explainer[open] summary::before {
     transform: rotate(90deg);
 }
 
 /* Remove default marker in browsers that support it */
-.braindump-explainer summary::-webkit-details-marker {
+.section-explainer summary::-webkit-details-marker {
     display: none;
 }
 
-.braindump-explainer .explainer-content {
+.section-explainer .explainer-content {
     padding: 0 1.5rem 1.25rem;
     color: var(--text-secondary);
     font-size: 0.95rem;
     line-height: 1.6;
 }
 
-.braindump-explainer .explainer-content p {
+.section-explainer .explainer-content p {
     margin: 0 0 0.75rem;
 }
 
-.braindump-explainer .explainer-content ol {
+.section-explainer .explainer-content ol {
     margin: 0.5rem 0 0.75rem 1.25rem;
     padding: 0;
 }
 
-.braindump-explainer .explainer-content li {
+.section-explainer .explainer-content li {
     margin-bottom: 0.3rem;
 }
 

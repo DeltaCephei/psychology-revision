@@ -1550,7 +1550,10 @@ const audioFileMap = {
     humanistic: 'humanistic',
     psychodynamic: 'psychodynamic',
     sociocultural: 'sociocultural',
-    summaries_intro: 'summaries_intro'
+    summaries_intro: 'summaries_intro',
+    flashcards_intro: 'flashcards_intro',
+    braindump_intro: 'braindump_intro',
+    quiz_intro: 'quiz_intro'
 };
 
 // Currently playing audio element and its button

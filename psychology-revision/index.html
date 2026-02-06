@@ -3,14 +3,14 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>NCEA Psychology Revision - Approaches</title>
+    <title>Psychology Support - NCEA Psychological Approaches</title>
     <link rel="stylesheet" href="styles.css">
 </head>
 <body>
     <header>
         <div class="header-content">
-            <h1>🧠 Psychology Revision</h1>
-            <p class="tagline">NCEA Level 2 & 3 - Psychological Approaches</p>
+            <h1>🧠 Psychology Support</h1>
+            <p class="tagline">NCEA Level 2 &amp; 3 Psychological Approaches Internals (AS91844 &amp; AS91872)</p>
         </div>
         <div class="level-selector">
             <button class="level-btn active" data-level="2">Level 2</button>
@@ -600,8 +600,20 @@
 
         <!-- Flashcards Section -->
         <section id="flashcards" class="section">
-            <h2>Flashcards</h2>
-            <p class="section-intro">Rate your confidence, then flip to check. Use the arrows to navigate.</p>
+            <div class="section-header-row">
+                <h2>Flashcards</h2>
+                <button class="audio-btn section-audio-btn" data-audio="flashcards_intro" title="Listen to introduction">▶</button>
+            </div>
+
+            <!-- Collapsible explainer — why these techniques work -->
+            <details class="section-explainer">
+                <summary>How to get the most from flashcards</summary>
+                <div class="explainer-content">
+                    <p><strong>Active recall:</strong> Try to answer in your head <em>before</em> flipping the card. Research by Karpicke &amp; Blunt (2011) found that retrieval practice produced 50% more learning than other study methods — even more than concept mapping.</p>
+                    <p><strong>Rate your confidence:</strong> Before each card you'll rate how sure you are. This is <em>metacognitive monitoring</em> — checking what you actually know versus what you think you know. Dunlosky et al. (2013) identified self-testing and identifying weak spots as two of the most effective revision strategies.</p>
+                    <p><strong>Thinking prompts:</strong> After flipping, you'll sometimes see a "why" or "how" question. These aren't marked — just say your answer out loud or in your head. The act of explaining is what matters. This is <em>elaborative interrogation</em> — asking yourself to explain deepens encoding and connects new knowledge to what you already know (Dunlosky et al., 2013).</p>
+                </div>
+            </details>
 
             <!-- Confidence rating — shown before flipping -->
             <div class="confidence-buttons" id="confidence-buttons">
@@ -615,6 +627,9 @@
 
             <div class="flashcard-container">
                 <button class="flashcard-nav prev" aria-label="Previous card">❮</button>
+
+                <!-- Audio play button — positioned at top-left of card -->
+                <button class="fc-audio-btn" id="fc-audio-btn" title="Listen to this card">▶</button>
 
                 <div class="flashcard" id="current-flashcard">
                     <div class="flashcard-inner">
@@ -647,7 +662,6 @@
 
             <div class="flashcard-controls">
                 <span class="card-counter">Card <span id="current-card-num">1</span> of <span id="total-cards">20</span></span>
-                <button class="fc-audio-btn" id="fc-audio-btn" title="Listen to this card">▶</button>
                 <button class="shuffle-btn" id="shuffle-cards">🔀 Shuffle</button>
                 <label class="elaboration-toggle">
                     <input type="checkbox" id="elaboration-toggle" checked>
@@ -669,8 +683,20 @@
 
         <!-- Quiz Section -->
         <section id="quiz" class="section">
-            <h2>Quiz</h2>
-            <p class="section-intro">Test your knowledge with these practice questions.</p>
+            <div class="section-header-row">
+                <h2>Quiz</h2>
+                <button class="audio-btn section-audio-btn" data-audio="quiz_intro" title="Listen to introduction">▶</button>
+            </div>
+
+            <!-- Collapsible explainer — why quizzing works -->
+            <details class="section-explainer">
+                <summary>Why quiz yourself?</summary>
+                <div class="explainer-content">
+                    <p><strong>The testing effect:</strong> Taking a quiz isn't just a way to check what you know — it actually <em>strengthens</em> your memory. Roediger &amp; Karpicke (2006) found that students who quizzed themselves remembered significantly more than those who simply re-read the material, even when total study time was the same.</p>
+                    <p><strong>Desirable difficulty:</strong> Getting a question wrong can be more valuable than getting it right. When you make an error and then learn the correct answer, the contrast creates a stronger memory trace. Bjork &amp; Bjork (2011) call this a "desirable difficulty" — the struggle is what makes it stick.</p>
+                    <p><strong>Go beyond these questions:</strong> The quizzes here are a solid starting point, but don't rely on them alone. Writing your own questions is one of the best ways to deepen understanding — it forces you to think about what's actually important. Try creating your own flashcards on paper, or use a tool like <a href="https://apps.ankiweb.net/" target="_blank" rel="noopener">Anki</a> to build a personal deck you can review anywhere.</p>
+                </div>
+            </details>
 
             <div class="quiz-options">
                 <div class="quiz-mode">
@@ -733,11 +759,14 @@
 
         <!-- Brain Dump Section -->
         <section id="braindump" class="section">
-            <h2>Brain Dump</h2>
+            <div class="section-header-row">
+                <h2>Brain Dump</h2>
+                <button class="audio-btn section-audio-btn" data-audio="braindump_intro" title="Listen to introduction">▶</button>
+            </div>
             <p class="section-intro">Test your recall: pick an approach, write everything you remember, then compare with the actual summary.</p>
 
             <!-- Collapsible explainer — why brain dumps work -->
-            <details class="braindump-explainer">
+            <details class="section-explainer">
                 <summary>Why Brain Dump?</summary>
                 <div class="explainer-content">
                     <p><strong>Brain dumping is one of the most effective study techniques known.</strong> Research by Roediger &amp; Karpicke (2006) shows that actively retrieving information from memory strengthens it far more than re-reading or highlighting.</p>
@@ -904,8 +933,8 @@
     </main>
 
     <footer>
-        <p>NCEA Psychology Revision | Created for NZ Students</p>
-        <p class="footer-note">Remember: Understanding the approaches helps you analyse behaviour from multiple perspectives!</p>
+        <p>Remember: Understanding the approaches helps you analyse behaviour from multiple perspectives!</p>
+        <p class="footer-copyright">&copy; Dr Eliot Attridge 2026</p>
     </footer>
 
     <!-- Class Code Modal -->
