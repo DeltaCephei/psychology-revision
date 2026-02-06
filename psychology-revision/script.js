@@ -727,6 +727,7 @@ document.addEventListener('DOMContentLoaded', () => {
     initializeApproachCards();
     initializeFlashcards();
     initializeQuiz();
+    initializeAudio();
     updateContentForLevel();
 });
 
@@ -746,6 +747,9 @@ function initializeLevelSelector() {
 }
 
 function updateContentForLevel() {
+    // Stop any playing audio when switching levels
+    if (typeof stopCurrentAudio === 'function') stopCurrentAudio();
+
     // Update approach card content visibility
     document.querySelectorAll('.level-content').forEach(content => {
         content.style.display = 'none';
@@ -1101,4 +1105,80 @@ function resetQuiz() {
     document.querySelector('.quiz-options').style.display = 'flex';
     document.getElementById('quiz-container').style.display = 'none';
     document.getElementById('quiz-results').style.display = 'none';
+}
+
+// ============================================
+// AUDIO NARRATION
+// ============================================
+
+// Map data-audio values to file name prefixes
+const audioFileMap = {
+    biological: 'biological',
+    behaviourist: 'behaviourist',
+    cognitive: 'cognitive',
+    humanistic: 'humanistic',
+    psychodynamic: 'psychodynamic',
+    sociocultural: 'sociocultural'
+};
+
+// Currently playing audio element and its button
+let currentAudio = null;
+let currentAudioBtn = null;
+
+function initializeAudio() {
+    // Attach click handlers to all audio buttons (stop event bubbling so
+    // clicking the button doesn't also toggle the card open/closed)
+    document.querySelectorAll('.audio-btn').forEach(btn => {
+        btn.addEventListener('click', (e) => {
+            e.stopPropagation();
+            toggleAudio(btn);
+        });
+    });
+}
+
+function toggleAudio(btn) {
+    const approach = btn.dataset.audio;
+    const prefix = audioFileMap[approach];
+    // Build the file path using current level
+    const src = `audio/level${currentLevel}_${prefix}.mp3`;
+
+    // If this button is already playing, pause it
+    if (currentAudioBtn === btn && currentAudio && !currentAudio.paused) {
+        currentAudio.pause();
+        btn.textContent = '▶';
+        btn.classList.remove('playing');
+        return;
+    }
+
+    // Stop any other playing audio first
+    stopCurrentAudio();
+
+    // Create and play new audio
+    currentAudio = new Audio(src);
+    currentAudioBtn = btn;
+    btn.textContent = '⏸︎';
+    btn.classList.add('playing');
+
+    currentAudio.play();
+
+    // Reset button when audio finishes
+    currentAudio.addEventListener('ended', () => {
+        btn.textContent = '▶';
+        btn.classList.remove('playing');
+        currentAudio = null;
+        currentAudioBtn = null;
+    });
+}
+
+function stopCurrentAudio() {
+    if (currentAudio) {
+        currentAudio.pause();
+        currentAudio.currentTime = 0;
+    }
+    if (currentAudioBtn) {
+        currentAudioBtn.textContent = '🔊';
+        currentAudioBtn.classList.remove('playing');
+    }
+    currentAudio = null;
+    currentAudioBtn = null;
 }

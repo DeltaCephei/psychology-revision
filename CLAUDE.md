@@ -27,6 +27,14 @@ Personal project workspace for Eliot Attridge — writer, teacher, and owner of 
 - **uv:** Python package manager at `~/.local/bin/uv`.
 - **Re-auth if needed:** Quit Chrome, then run `~/.local/bin/nlm login`.
 
+## NotebookLM QC Rules
+
+1. **Source labelling:** Always state which notebook content came from. If a claim is based on training knowledge rather than a NotebookLM response, say so explicitly.
+2. **Retrieval quality flagging:** If a NotebookLM response seems vague, incomplete, or doesn't directly address the query, flag this openly. Say something like "NotebookLM didn't return a clear answer on this — the following is my own knowledge, not from your sources."
+3. **Separate fact from inference:** Clearly distinguish between what NotebookLM returned (retrieved fact) and any reasoning or conclusions built on top of it (inference). Make the seam visible.
+4. **Thin response handling:** If NotebookLM returns very little content for a query, do not silently compensate. Instead, suggest rephrasing the query or checking NotebookLM directly.
+5. **No silent merging:** Never blend NotebookLM content and training knowledge into a single undifferentiated answer. Always keep the two streams identifiable.
+
 ## Project Structure
 
 Each project gets its own subdirectory with a project-specific `CLAUDE.md`. This root file covers shared preferences and conventions. Keep project-specific details in the project's own CLAUDE.md to avoid context bloat.
