@@ -3805,19 +3805,16 @@ const LS_CLASS_CODE = 'psych_class_code';
 let firebaseEnabled = false;
 let db = null;
 
-// Firebase config — replace with your actual project config
-const FIREBASE_CONFIG = {
-    apiKey: "AIzaSyB8BUglvrjF6gcyHG3Oi8vm_YKWrgFMtvo",
-    authDomain: "psychologyrevision-9cf79.firebaseapp.com",
-    projectId: "psychologyrevision-9cf79",
-    storageBucket: "psychologyrevision-9cf79.firebasestorage.app",
-    messagingSenderId: "266444429967",
-    appId: "1:266444429967:web:cbb19c6dd630aa68e52efa",
-    measurementId: "G-YWQWD7XMXF"
-};
+// Firebase config — loaded from firebase-config.js (gitignored) via window.FIREBASE_CONFIG.
+// See firebase-config.example.js for the expected structure.
+const FIREBASE_CONFIG = window.FIREBASE_CONFIG || null;
 
 // Initialise Firebase if the SDK loaded successfully
 function initializeFirebase() {
+    if (!FIREBASE_CONFIG) {
+        console.warn('Firebase config not found — ensure firebase-config.js is present. Class comparison features disabled.');
+        return;
+    }
     if (typeof firebase === 'undefined') {
         console.warn('Firebase SDK not loaded — class comparison features disabled.');
         return;
