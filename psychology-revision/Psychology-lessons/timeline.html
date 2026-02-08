@@ -1,0 +1,68 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>History of Psychology — Interactive Timeline</title>
+    <link rel="stylesheet" href="timeline.css">
+</head>
+<body>
+
+    <!-- Header -->
+    <header>
+        <a href="../index.html" class="back-link">← Back to Psychology Support</a>
+        <div class="header-content">
+            <h1>History of Psychology</h1>
+            <p class="tagline">An interactive timeline of key events in psychology — and what was happening in Aotearoa New Zealand at the same time</p>
+        </div>
+    </header>
+
+    <!-- Filter controls -->
+    <div class="controls">
+        <div class="filter-buttons">
+            <button class="filter-btn active" data-filter="all">All Events</button>
+            <button class="filter-btn" data-filter="psychology">
+                <span class="legend-dot psychology"></span> Psychology
+            </button>
+            <button class="filter-btn" data-filter="nz">
+                <span class="legend-dot nz"></span> Aotearoa NZ
+            </button>
+        </div>
+        <button class="expand-toggle" id="expandAll">Expand All</button>
+        <button class="activity-start-btn" id="startActivity">🎯 Match the Approach</button>
+    </div>
+
+    <!-- Match the Approach activity overlay -->
+    <div class="activity-overlay" id="activityOverlay">
+        <div class="activity-header">
+            <div class="activity-progress" id="activityProgress">Question 1 of 20</div>
+            <div class="activity-score" id="activityScore">Score: 0/0</div>
+            <button class="activity-close" onclick="closeActivity()">✕</button>
+        </div>
+        <div class="activity-prompt">Which psychological approach does this event best fit?</div>
+        <div class="activity-card slide-in" id="activityCard">
+            <span class="event-date" id="activityDate"></span>
+            <div class="event-title" id="activityTitle"></div>
+            <div class="event-summary" id="activitySummary"></div>
+            <div class="activity-buttons" id="activityButtons"></div>
+            <div class="activity-feedback" id="activityFeedback"></div>
+            <button class="activity-next" id="activityNext" style="display:none;">Next Question →</button>
+        </div>
+    </div>
+
+    <!-- Timeline -->
+    <div class="timeline-container">
+        <div class="timeline-line"></div>
+        <div id="timeline" class="timeline">
+            <!-- Events inserted by JS -->
+        </div>
+    </div>
+
+    <!-- Footer -->
+    <footer>
+        <p>Based on the NCEA Level 2 Psychology textbook timeline. Part of <a href="../index.html">Psychology Support</a>.</p>
+    </footer>
+
+    <script src="timeline.js"></script>
+</body>
+</html>
