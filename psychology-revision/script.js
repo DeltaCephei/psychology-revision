@@ -1024,6 +1024,10 @@ function initializeNavigation() {
     const navLinks = document.querySelectorAll('.nav-link');
     navLinks.forEach(link => {
         link.addEventListener('click', (e) => {
+            // Allow links to other pages (e.g. timeline) to navigate normally
+            const href = link.getAttribute('href');
+            if (href && !href.startsWith('#')) return;
+
             e.preventDefault();
             navLinks.forEach(l => l.classList.remove('active'));
             link.classList.add('active');
