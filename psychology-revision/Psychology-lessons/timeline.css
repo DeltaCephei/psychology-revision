@@ -383,6 +383,89 @@ header h1 {
     margin-bottom: 0;
 }
 
+/* --- Dig Deeper links --- */
+.dig-deeper {
+    margin-top: 0.75rem;
+    padding-top: 0.75rem;
+    border-top: 1px dashed #e2e8f0;
+}
+
+.dig-deeper-heading {
+    font-size: 0.75rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    color: var(--text-light);
+    margin-bottom: 0.5rem;
+}
+
+.dig-deeper-links {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.4rem;
+}
+
+.dig-link {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.3rem;
+    padding: 0.3rem 0.65rem;
+    border-radius: var(--radius-sm);
+    font-size: 0.75rem;
+    font-weight: 600;
+    text-decoration: none;
+    transition: all 0.2s;
+    border: 1px solid #e2e8f0;
+    background: white;
+    color: var(--text-primary);
+}
+
+.dig-link:hover {
+    transform: translateY(-1px);
+    box-shadow: var(--shadow-sm);
+}
+
+.dig-icon {
+    font-size: 0.7rem;
+}
+
+/* Link type colours */
+.dig-link-video {
+    border-color: #e74c3c;
+    color: #c0392b;
+}
+
+.dig-link-video:hover {
+    background: #fdedec;
+}
+
+.dig-link-article {
+    border-color: var(--psych-border);
+    color: var(--psych-color);
+}
+
+.dig-link-article:hover {
+    background: var(--psych-bg);
+}
+
+.dig-link-nz {
+    border-color: var(--nz-border);
+    color: #0e7a71;
+}
+
+.dig-link-nz:hover {
+    background: var(--nz-bg);
+}
+
+.dig-link-revision {
+    border-color: #c7a4e8;
+    color: #764ba2;
+}
+
+.dig-link-revision:hover {
+    background: #f3ebfa;
+}
+
 /* "Click to expand" hint */
 .expand-hint {
     font-size: 0.7rem;

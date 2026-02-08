@@ -514,6 +514,217 @@ const timelineEvents = [
 ];
 
 
+// ---- External links for each event ----
+// Keyed by event title. Each entry is an array of {label, url, type} objects.
+// type: 'video' | 'article' | 'nz' | 'revision' (for cross-links to main site)
+const eventLinks = {
+    // --- Ancient & Early ---
+    "Plato — The Brain and the Mind": [
+        { label: "Plato's philosophy of mind", url: "https://en.wikipedia.org/wiki/Plato%27s_theory_of_soul", type: "article" }
+    ],
+    "Aristotle — The Heart and the Mind": [
+        { label: "Aristotle's psychology", url: "https://en.wikipedia.org/wiki/Aristotle%27s_biology#Psychology", type: "article" }
+    ],
+    "Trepanning — Early Brain Surgery": [
+        { label: "History of trepanning", url: "https://en.wikipedia.org/wiki/Trepanning", type: "article" }
+    ],
+
+    // --- Te Ao Māori ---
+    "Te Ao Māori — Hauora and Wellbeing": [
+        { label: "Te hauora Māori — history of Māori health", url: "https://teara.govt.nz/en/te-hauora-maori-i-mua-history-of-maori-health", type: "nz" },
+        { label: "Te Whare Tapa Whā model (Te Ara)", url: "https://teara.govt.nz/en/diagram/31387/maori-health-te-whare-tapa-wha-model", type: "nz" }
+    ],
+
+    // --- 1800s ---
+    "Franz Gall — Phrenology": [
+        { label: "Phrenology explained", url: "https://en.wikipedia.org/wiki/Phrenology", type: "article" }
+    ],
+    "Te Tiriti o Waitangi Signed": [
+        { label: "The Treaty in brief (NZ History)", url: "https://nzhistory.govt.nz/politics/treaty/the-treaty-in-brief", type: "nz" },
+        { label: "Read the Treaty texts", url: "https://nzhistory.govt.nz/politics/treaty/read-the-treaty/english-text", type: "nz" },
+        { label: "Treaty FAQs", url: "https://nzhistory.govt.nz/page/treaty-faqs", type: "nz" }
+    ],
+    "Darwin — On the Origin of Species": [
+        { label: "Darwin and natural selection", url: "https://www.simplypsychology.org/charles-darwin.html", type: "article" },
+        { label: "Biological approach", url: "../index.html#summaries", type: "revision" }
+    ],
+    "Wundt — First Psychology Laboratory": [
+        { label: "Wilhelm Wundt — father of psychology", url: "https://www.simplypsychology.org/wundt.html", type: "article" }
+    ],
+    "William James — American Psychology": [
+        { label: "William James and functionalism", url: "https://www.simplypsychology.org/william-james.html", type: "article" }
+    ],
+    "Mt Tarawera Erupts": [
+        { label: "Mt Tarawera eruption (NZ History)", url: "https://nzhistory.govt.nz/culture/tarawera-eruption", type: "nz" }
+    ],
+    "Telephone Exchanges Open": [],
+    "Women Win the Right to Vote": [
+        { label: "Women's suffrage (NZ History)", url: "https://nzhistory.govt.nz/politics/womens-suffrage", type: "nz" },
+        { label: "Kate Sheppard", url: "https://nzhistory.govt.nz/people/kate-sheppard", type: "nz" }
+    ],
+    "Tohunga Suppression Act": [
+        { label: "Tohunga Suppression Act (Te Ara)", url: "https://teara.govt.nz/en/document/28223/tohunga-suppression-act", type: "nz" },
+        { label: "Impact of colonisation on Māori health", url: "https://teara.govt.nz/en/rongoa-medicinal-use-of-plants/page-5", type: "nz" }
+    ],
+
+    // --- Early 1900s ---
+    "Binet — Intelligence Testing": [
+        { label: "Alfred Binet and IQ testing", url: "https://www.simplypsychology.org/alfred-binet.html", type: "article" },
+        { label: "Cognitive approach", url: "../index.html#summaries", type: "revision" }
+    ],
+    "World War One Begins": [
+        { label: "NZ in World War One (NZ History)", url: "https://nzhistory.govt.nz/war/first-world-war-overview", type: "nz" }
+    ],
+    "US Army IQ Testing": [
+        { label: "History of IQ testing", url: "https://en.wikipedia.org/wiki/Army_Alpha", type: "article" }
+    ],
+    "WWI Ends — Influenza Epidemic": [
+        { label: "1918 influenza pandemic in NZ (NZ History)", url: "https://nzhistory.govt.nz/culture/influenza-pandemic-1918", type: "nz" }
+    ],
+    "Watson & Rayner — Little Albert": [
+        { label: "Little Albert experiment explained", url: "https://www.simplypsychology.org/little-albert.html", type: "article" },
+        { label: "Original 1920 footage", url: "https://commons.wikimedia.org/wiki/File:Little_Albert_experiment_(1920).webm", type: "video" },
+        { label: "Behaviourist approach", url: "../index.html#summaries", type: "revision" }
+    ],
+    "Radio Broadcasting Begins": [],
+
+    // --- 1930s–1950s ---
+    "Piaget — The Moral Judgment of the Child": [
+        { label: "Piaget's stages of development", url: "https://www.simplypsychology.org/piaget.html", type: "article" },
+        { label: "Piaget's stages (Khan Academy video)", url: "https://www.khanacademy.org/science/health-and-medicine/executive-systems-of-the-brain/cognition-lesson/v/piagets-stages-of-cognitive-development", type: "video" },
+        { label: "Cognitive approach", url: "../index.html#summaries", type: "revision" }
+    ],
+    "Airmail Services Begin": [],
+    "First Lobotomy in the US": [
+        { label: "History of lobotomy", url: "https://en.wikipedia.org/wiki/Lobotomy", type: "article" },
+        { label: "Biological approach", url: "../index.html#summaries", type: "revision" }
+    ],
+    "Jean Batten Flies the Atlantic": [
+        { label: "Jean Batten (NZ History)", url: "https://nzhistory.govt.nz/people/jean-batten", type: "nz" }
+    ],
+    "Skinner — Operant Conditioning": [
+        { label: "Operant conditioning explained", url: "https://www.simplypsychology.org/operant-conditioning.html", type: "article" },
+        { label: "Behaviourist approach", url: "../index.html#summaries", type: "revision" }
+    ],
+    "Seacliff Mental Hospital Fire": [
+        { label: "Seacliff Lunatic Asylum", url: "https://en.wikipedia.org/wiki/Seacliff_Lunatic_Asylum", type: "article" }
+    ],
+    "Maslow — Hierarchy of Needs": [
+        { label: "Maslow's hierarchy explained", url: "https://www.simplypsychology.org/maslow.html", type: "article" },
+        { label: "Humanistic approach", url: "../index.html#summaries", type: "revision" }
+    ],
+    "Hillary and Tenzing Summit Everest": [
+        { label: "Edmund Hillary (NZ History)", url: "https://nzhistory.govt.nz/people/edmund-hillary", type: "nz" }
+    ],
+
+    // --- 1960s–1970s ---
+    "Tohunga Suppression Act Repealed": [
+        { label: "Tohunga Suppression Act (Te Ara)", url: "https://teara.govt.nz/en/document/28223/tohunga-suppression-act", type: "nz" }
+    ],
+    "DSM-II Published": [
+        { label: "History of the DSM", url: "https://en.wikipedia.org/wiki/Diagnostic_and_Statistical_Manual_of_Mental_Disorders", type: "article" },
+        { label: "Biological approach", url: "../index.html#summaries", type: "revision" }
+    ],
+    "The Wahine Disaster": [
+        { label: "The Wahine disaster (NZ History)", url: "https://nzhistory.govt.nz/page/wahine-disaster-0", type: "nz" },
+        { label: "Wahine disaster on television", url: "https://nzhistory.govt.nz/media/video/wahine-disaster-on-television", type: "video" }
+    ],
+    "Stanford Prison Experiment": [
+        { label: "Stanford Prison Experiment explained", url: "https://www.simplypsychology.org/zimbardo.html", type: "article" },
+        { label: "Official SPE website (Stanford)", url: "https://www.prisonexp.org/", type: "article" },
+        { label: "Sociocultural approach", url: "../index.html#summaries", type: "revision" }
+    ],
+    "TV2 and Social Change": [],
+    "Milgram — Obedience to Authority": [
+        { label: "Milgram experiment explained", url: "https://www.simplypsychology.org/milgram.html", type: "article" },
+        { label: "Milgram experiment (Khan Academy video)", url: "https://www.khanacademy.org/test-prep/mcat/behavior/social-psychology/v/milgram-experiment-on-obedience", type: "video" },
+        { label: "Sociocultural approach", url: "../index.html#summaries", type: "revision" }
+    ],
+    "Ainsworth — Attachment Theory": [
+        { label: "Strange Situation explained", url: "https://www.simplypsychology.org/mary-ainsworth.html", type: "article" },
+        { label: "Psychodynamic approach", url: "../index.html#summaries", type: "revision" }
+    ],
+
+    // --- 1980s ---
+    "Te Kōhanga Reo Established": [
+        { label: "Te Kōhanga Reo (Te Ara)", url: "https://teara.govt.nz/en/kohanga-reo", type: "nz" }
+    ],
+    "Mason Durie — Te Whare Tapa Whā": [
+        { label: "Te Whare Tapa Whā (Te Ara diagram)", url: "https://teara.govt.nz/en/diagram/31387/maori-health-te-whare-tapa-wha-model", type: "nz" },
+        { label: "Te Whare Tapa Whā for learning about wellbeing (PDF)", url: "https://healtheducation.org.nz/wp-content/uploads/2023/03/Using-Te-Whare-Tapa-Wha%CC%84-for-learning-about-wellbeing.pdf", type: "article" },
+        { label: "Open Polytechnic — Te Whare Tapa Whā", url: "https://www.openpolytechnic.ac.nz/current-students/wellbeing/new-te-whare-tapa-wha/", type: "nz" }
+    ],
+    "Gardner — Multiple Intelligences": [
+        { label: "Multiple intelligences explained", url: "https://www.simplypsychology.org/howard-gardner.html", type: "article" },
+        { label: "Cognitive approach", url: "../index.html#summaries", type: "revision" }
+    ],
+    "Merzenich — Neuroplasticity": [
+        { label: "Neuroplasticity explained", url: "https://www.simplypsychology.org/brain-plasticity.html", type: "article" },
+        { label: "Biological approach", url: "../index.html#summaries", type: "revision" }
+    ],
+    "Stock Market Crash": [
+        { label: "1987 crash (NZ History)", url: "https://nzhistory.govt.nz/keyword/1987-sharemarket-crash", type: "nz" }
+    ],
+    "Deep Blue Beats Kasparov": [
+        { label: "Deep Blue vs Kasparov", url: "https://en.wikipedia.org/wiki/Deep_Blue_versus_Garry_Kasparov", type: "article" },
+        { label: "Cognitive approach", url: "../index.html#summaries", type: "revision" }
+    ],
+
+    // --- 2000s ---
+    "The Digital Age": [],
+    "Human Genome Mapped": [
+        { label: "Human Genome Project", url: "https://en.wikipedia.org/wiki/Human_Genome_Project", type: "article" },
+        { label: "Biological approach", url: "../index.html#summaries", type: "revision" }
+    ],
+    "Christchurch Earthquake": [
+        { label: "Christchurch earthquake (NZ History)", url: "https://nzhistory.govt.nz/culture/february-2011-christchurch-earthquake", type: "nz" }
+    ],
+    "DSM-5 Published": [
+        { label: "DSM-5 overview", url: "https://en.wikipedia.org/wiki/DSM-5", type: "article" },
+        { label: "Biological approach", url: "../index.html#summaries", type: "revision" }
+    ],
+    "The Replication Crisis": [
+        { label: "Replication crisis explained", url: "https://www.simplypsychology.org/replication-crisis.html", type: "article" }
+    ],
+    "Kaikōura Earthquake": [
+        { label: "Kaikōura earthquake (NZ History)", url: "https://nzhistory.govt.nz/page/kaik%C5%8Dura-earthquake", type: "nz" }
+    ],
+    "Social Media and Teen Mental Health": [
+        { label: "Social media and mental health research", url: "https://www.simplypsychology.org/social-media-mental-health.html", type: "article" },
+        { label: "Sociocultural approach", url: "../index.html#summaries", type: "revision" }
+    ],
+    "He Ara Oranga — Mental Health Inquiry": [
+        { label: "He Ara Oranga report (NZ Government)", url: "https://www.mentalhealth.inquiry.govt.nz/inquiry-report/he-ara-oranga/", type: "nz" }
+    ],
+    "Christchurch Mosque Shootings": [
+        { label: "15 March 2019 (NZ History)", url: "https://nzhistory.govt.nz/page/christchurch-mosque-shootings", type: "nz" }
+    ],
+    "COVID-19 — Global Mental Health Crisis": [
+        { label: "COVID-19 and mental health (Pew Research)", url: "https://www.pewresearch.org/short-reads/2023/03/02/mental-health-and-the-pandemic-what-u-s-surveys-have-found/", type: "article" },
+        { label: "Sociocultural approach", url: "../index.html#summaries", type: "revision" }
+    ],
+    "NZ COVID-19 Lockdowns": [
+        { label: "COVID-19 in NZ (NZ History)", url: "https://nzhistory.govt.nz/page/covid-19-pandemic", type: "nz" }
+    ],
+    "ChatGPT and the Rise of AI": [
+        { label: "AI and cognitive psychology", url: "https://en.wikipedia.org/wiki/Artificial_intelligence_in_mental_health", type: "article" },
+        { label: "Cognitive approach", url: "../index.html#summaries", type: "revision" }
+    ],
+    "Cyclone Gabrielle": [
+        { label: "Cyclone Gabrielle (NZ History)", url: "https://nzhistory.govt.nz/page/cyclone-gabrielle", type: "nz" }
+    ],
+    "Neuralink — Brain-Computer Interface": [
+        { label: "Brain-computer interfaces explained", url: "https://en.wikipedia.org/wiki/Brain%E2%80%93computer_interface", type: "article" },
+        { label: "Biological approach", url: "../index.html#summaries", type: "revision" }
+    ]
+};
+
+// Merge links into events
+timelineEvents.forEach(event => {
+    event.links = eventLinks[event.title] || [];
+});
+
+
 // ---- Render the timeline ----
 const timelineEl = document.getElementById('timeline');
 
@@ -540,6 +751,18 @@ function renderTimeline(filter = 'all') {
                 <div class="event-detail">
                     <div class="event-detail-inner">
                         <p>${event.detail}</p>
+                        ${event.links && event.links.length > 0 ? `
+                        <div class="dig-deeper">
+                            <div class="dig-deeper-heading">Dig Deeper</div>
+                            <div class="dig-deeper-links">
+                                ${event.links.map(link => `
+                                    <a href="${link.url}" target="_blank" rel="noopener noreferrer" class="dig-link dig-link-${link.type}">
+                                        <span class="dig-icon">${link.type === 'video' ? '▶' : link.type === 'nz' ? '🥝' : link.type === 'revision' ? '📚' : '📄'}</span>
+                                        ${link.label}
+                                    </a>
+                                `).join('')}
+                            </div>
+                        </div>` : ''}
                     </div>
                 </div>
                 ${event.image ? `<img class="event-image" src="${event.image}" alt="${event.title}">` : ''}
