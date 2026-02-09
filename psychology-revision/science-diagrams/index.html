@@ -1,0 +1,47 @@
+<!DOCTYPE html>
+<html lang="en-NZ">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Science Diagram Generator</title>
+    <link rel="stylesheet" href="diagrams.css">
+</head>
+<body>
+    <!-- Header with app title and diagram type selector -->
+    <header>
+        <h1>Science Diagram Generator</h1>
+        <p class="subtitle">Precise, exportable SVG diagrams for science teaching</p>
+    </header>
+
+    <main>
+        <!-- Diagram type selector tabs -->
+        <nav class="diagram-tabs" id="diagramTabs">
+            <button class="tab active" data-type="ray-diagram">Ray Diagrams (Optics)</button>
+            <button class="tab" data-type="food-web">Food Web</button>
+            <button class="tab" data-type="process-cycle">Process / Cycle</button>
+            <button class="tab" data-type="labelled-structure">Labelled Structure</button>
+        </nav>
+
+        <!-- Controls panel — changes per diagram type -->
+        <section class="controls-panel" id="controlsPanel">
+            <!-- Controls injected by JS based on active diagram type -->
+        </section>
+
+        <!-- SVG canvas area -->
+        <section class="canvas-wrapper">
+            <svg id="diagramCanvas" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 900 500" preserveAspectRatio="xMidYMid meet">
+                <!-- Diagram content rendered here by JS -->
+            </svg>
+        </section>
+
+        <!-- Export bar -->
+        <section class="export-bar">
+            <button id="exportSvg" class="btn btn-primary">Export SVG</button>
+            <button id="exportPng" class="btn btn-primary">Export PNG</button>
+            <button id="copyToClipboard" class="btn btn-secondary">Copy SVG to Clipboard</button>
+        </section>
+    </main>
+
+    <script src="diagrams.js"></script>
+</body>
+</html>
