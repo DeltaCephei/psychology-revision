@@ -19,3 +19,4 @@ venv/
 .env
 .env.local
 firebase-config.js
+.mcp.json
